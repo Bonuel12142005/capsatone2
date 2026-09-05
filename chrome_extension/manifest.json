@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "EchoTrace Fake Review Detector",
+  "version": "1.0.0",
+  "description": "AI-Powered fake product review detection system that scans e-commerce websites in real time.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "*://*.amazon.com/*",
+    "*://*.shopee.ph/*",
+    "*://*.shopee.sg/*",
+    "*://*.lazada.com.ph/*",
+    "*://*.lazada.sg/*",
+    "*://*.ebay.com/*",
+    "*://*.aliexpress.com/*",
+    "*://*.walmart.com/*"
+  ],
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.amazon.com/*",
+        "*://*.shopee.ph/*",
+        "*://*.shopee.sg/*",
+        "*://*.lazada.com.ph/*",
+        "*://*.lazada.sg/*",
+        "*://*.ebay.com/*",
+        "*://*.aliexpress.com/*",
+        "*://*.walmart.com/*"
+      ],
+      "js": ["scripts/content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html"
+  }
+}

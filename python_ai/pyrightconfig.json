@@ -1,0 +1,32 @@
+{
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows",
+  "pythonPath": "C:/laragon/bin/python/python-3.13/python.exe",
+  "extraPaths": [
+    ".",
+    "C:/laragon/bin/python/python-3.13/Lib/site-packages"
+  ],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        ".",
+        "C:/laragon/bin/python/python-3.13/Lib/site-packages"
+      ]
+    }
+  ],
+  "reportMissingTypeStubs": false,
+  "reportMissingModuleSource": false,
+  "reportMissingImports": false,
+  "exclude": [
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/__pyrefly_virtual__",
+    "**/__pyrefly_virtual__/**",
+    "c:/__pyrefly_virtual__/**"
+  ],
+  "ignore": [
+    "**/__pyrefly_virtual__/**",
+    "c:/__pyrefly_virtual__/**"
+  ]
+}

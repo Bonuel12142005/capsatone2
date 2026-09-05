@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoTrace - AI Fake Review Detector</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0b0f19',
+                        emeraldGreen: '#10b981',
+                        skyBlue: '#3b82f6',
+                        glassBg: 'rgba(255, 255, 255, 0.03)',
+                        glassBorder: 'rgba(255, 255, 255, 0.08)'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Custom Style Sheet -->
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-[#0b0f19] text-gray-100 min-h-screen relative font-sans">
+    <!-- Background Glow Orbs -->
+    <div class="glow-orb orb-green"></div>
+    <div class="glow-orb orb-blue"></div>
+
+    <!-- Navigation Header -->
+    <header class="sticky top-0 z-50 glass-panel border-b border-glassBorder mx-4 my-2 rounded-2xl">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <a href="#landing" onclick="navigateTo('landing')" class="flex items-center space-x-3 group">
+                <div class="bg-gradient-to-r from-emeraldGreen to-skyBlue p-2 rounded-xl text-white shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">EchoTrace</span>
+            </a>
+            
+            <nav class="hidden md:flex items-center space-x-8">
+                <a href="#features" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Features</a>
+                <a href="#about" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">About</a>
+                <a href="#contact" class="text-sm font-medium text-gray-400 hover:text-white transition-colors">Contact</a>
+                <a href="#rag-assistant" onclick="navigateTo('rag-assistant')" class="auth-only hidden text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors flex items-center space-x-1">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                    <span>RAG Copilot</span>
+                </a>
+                <span class="auth-only hidden w-px h-4 bg-glassBorder"></span>
+                <a href="#dashboard" onclick="navigateTo('dashboard')" class="auth-only hidden text-sm font-medium text-gray-400 hover:text-white transition-colors">Dashboard</a>
+                <a href="#admin" onclick="navigateTo('admin')" class="admin-only hidden text-sm font-medium text-gray-400 hover:text-white transition-colors text-amber-400">Admin Panel</a>
+            </nav>
+
+            <div class="flex items-center space-x-4">
+                <!-- Theme Toggle -->
+                <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-glassBorder transition-colors text-gray-400 hover:text-white" title="Toggle Light/Dark Mode">
+                    <i data-lucide="sun" id="theme-icon-sun" class="w-5 h-5"></i>
+                </button>
+                
+                <!-- Notification Bell -->
+                <div class="relative auth-only hidden">
+                    <button onclick="toggleNotifications()" class="p-2 rounded-lg hover:bg-glassBorder transition-colors text-gray-400 hover:text-white">
+                        <i data-lucide="bell" class="w-5 h-5"></i>
+                        <span id="notif-badge" class="absolute top-1 right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-[#0b0f19] hidden animate-pulse"></span>
+                    </button>
+                    <!-- Notifications Dropdown -->
+                    <div id="notif-dropdown" class="hidden absolute right-0 mt-3 w-80 glass-panel p-4 rounded-xl shadow-2xl z-50 text-sm">
+                        <div class="flex items-center justify-between border-b border-glassBorder pb-2 mb-2">
+                            <span class="font-semibold text-gray-200">Alerts & Notifications</span>
+                            <button onclick="clearNotifs()" class="text-xs text-emerald-400 hover:text-emerald-300">Mark all read</button>
+                        </div>
+                        <div id="notif-list" class="space-y-2 max-h-60 overflow-y-auto">
+                            <!-- Populated dynamically -->
+                            <p class="text-xs text-gray-500 text-center py-4">No new notifications</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Auth Buttons (Hidden on Mobile) -->
+                <div class="hidden md:flex items-center space-x-3">
+                    <div id="nav-auth-guest" class="flex items-center space-x-3">
+                        <button onclick="navigateTo('login')" class="text-sm font-semibold text-gray-300 hover:text-white px-4 py-2 transition-colors">Sign In</button>
+                        <button onclick="navigateTo('register')" class="text-sm font-semibold bg-gradient-to-r from-emeraldGreen to-skyBlue hover:scale-102 hover:shadow-lg hover:shadow-emerald-500/10 text-white px-5 py-2 rounded-xl transition-all">Sign Up</button>
+                    </div>
+                    
+                    <div id="nav-auth-user" class="hidden flex items-center space-x-3">
+                        <button onclick="navigateTo('profile')" class="flex items-center space-x-2 text-sm font-semibold text-gray-200 hover:text-emerald-400 px-3 py-2 rounded-lg hover:bg-glassBorder transition-all">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                            <span id="nav-username">Profile</span>
+                        </button>
+                        <button onclick="handleLogout()" class="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors" title="Logout">
+                            <i data-lucide="log-out" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hamburger Button (Mobile Only) -->
+                <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg hover:bg-glassBorder transition-colors text-gray-400 hover:text-white" title="Open Menu">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation Sidebar -->
+    <div id="mobile-sidebar" class="fixed inset-0 z-[100] hidden">
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300" onclick="toggleMobileMenu()"></div>
+        
+        <!-- Drawer Panel -->
+        <div class="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-[#0b0f19]/95 backdrop-blur-xl border-l border-glassBorder p-6 shadow-2xl flex flex-col justify-between transform translate-x-full transition-transform duration-300 ease-out z-[101]" id="mobile-sidebar-panel">
+            <div class="space-y-6">
+                <!-- Sidebar Header -->
+                <div class="flex items-center justify-between border-b border-glassBorder pb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-gradient-to-r from-emeraldGreen to-skyBlue p-1.5 rounded-lg text-white">
+                            <i data-lucide="shield-check" class="w-5 h-5"></i>
+                        </div>
+                        <span class="text-lg font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">EchoTrace</span>
+                    </div>
+                    <button onclick="toggleMobileMenu()" class="p-2 rounded-lg hover:bg-glassBorder transition-colors text-gray-400 hover:text-white">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+
+                <!-- Sidebar Nav Links -->
+                <nav class="flex flex-col space-y-4 text-base">
+                    <a href="#features" onclick="toggleMobileMenu()" class="flex items-center space-x-3 text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="sparkles" class="w-5 h-5 text-emerald-400"></i>
+                        <span>Features</span>
+                    </a>
+                    <a href="#about" onclick="toggleMobileMenu()" class="flex items-center space-x-3 text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="info" class="w-5 h-5 text-sky-400"></i>
+                        <span>About</span>
+                    </a>
+                    <a href="#contact" onclick="toggleMobileMenu()" class="flex items-center space-x-3 text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="mail" class="w-5 h-5 text-indigo-400"></i>
+                        <span>Contact</span>
+                    </a>
+                    
+                    <div class="h-px bg-glassBorder my-2"></div>
+                    
+                    <!-- Dashboard & Admin (Conditional via auth status) -->
+                    <a href="#dashboard" onclick="navigateTo('dashboard'); toggleMobileMenu()" class="auth-only hidden flex items-center space-x-3 text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="layout-dashboard" class="w-5 h-5 text-emerald-400"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#audit-history" onclick="navigateTo('audit-history'); toggleMobileMenu()" class="auth-only hidden flex items-center space-x-3 text-gray-300 hover:text-white px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="history" class="w-5 h-5 text-sky-400"></i>
+                        <span>Audit History</span>
+                    </a>
+                    <a href="#rag-assistant" onclick="navigateTo('rag-assistant'); toggleMobileMenu()" class="auth-only hidden flex items-center space-x-3 text-emerald-400 hover:text-emerald-300 px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="bot" class="w-5 h-5"></i>
+                        <span>RAG Copilot</span>
+                    </a>
+                    <a href="#admin" onclick="navigateTo('admin'); toggleMobileMenu()" class="admin-only hidden flex items-center space-x-3 text-amber-400 hover:text-amber-300 px-3 py-2 rounded-xl hover:bg-glassBorder transition-all">
+                        <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                        <span>Admin Panel</span>
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Sidebar Auth Actions / Profile -->
+            <div class="border-t border-glassBorder pt-6 space-y-4">
+                <!-- Guest View -->
+                <div id="sidebar-auth-guest" class="flex flex-col space-y-3">
+                    <button onclick="navigateTo('login'); toggleMobileMenu()" class="w-full text-center text-sm font-semibold text-gray-300 hover:text-white py-2.5 rounded-xl border border-glassBorder transition-colors">Sign In</button>
+                    <button onclick="navigateTo('register'); toggleMobileMenu()" class="w-full text-center text-sm font-semibold bg-gradient-to-r from-emeraldGreen to-skyBlue text-white py-2.5 rounded-xl transition-all">Sign Up</button>
+                </div>
+                
+                <!-- Authenticated View -->
+                <div id="sidebar-auth-user" class="hidden flex flex-col space-y-3">
+                    <div class="flex items-center space-x-3 p-2.5 rounded-xl bg-glassBorder/10 border border-glassBorder">
+                        <div class="w-9 h-9 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="text-xs font-bold text-white truncate" id="sidebar-username">Username</div>
+                            <div class="text-[9px] text-emerald-400 font-semibold uppercase tracking-wider">Account Active</div>
+                        </div>
+                    </div>
+                    <button onclick="navigateTo('profile'); toggleMobileMenu()" class="w-full text-left text-sm font-medium text-gray-300 hover:text-white px-3 py-2.5 rounded-xl hover:bg-glassBorder transition-all flex items-center space-x-3">
+                        <i data-lucide="settings" class="w-5 h-5 text-gray-400"></i>
+                        <span>Account Settings</span>
+                    </button>
+                    <button onclick="handleLogout(); toggleMobileMenu()" class="w-full text-left text-sm font-medium text-rose-400 hover:text-rose-300 px-3 py-2.5 rounded-xl hover:bg-rose-500/5 transition-all flex items-center space-x-3">
+                        <i data-lucide="log-out" class="w-5 h-5"></i>
+                        <span>Disconnect Account</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 md:px-8 py-6 z-10 relative min-h-[calc(100vh-120px)]">
+        
+        <!-- =================== 1. LANDING VIEW =================== -->
+        <section id="view-landing" class="view-section animate-fade-in py-12 md:py-24">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                <div class="space-y-6">
+                    <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full text-emerald-400 text-xs font-semibold tracking-wider uppercase">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                        <span>AI-Powered Review Audit</span>
+                    </div>
+                    <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
+                        Expose <span class="bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">Fake Reviews</span> with EchoTrace
+                    </h1>
+                    <p class="text-gray-400 text-lg md:text-xl font-normal leading-relaxed">
+                        Shop with confidence. EchoTrace uses NLP and Machine Learning to audit product reviews, flags identical duplicates, detects toxicity, and alerts you to AI-generated spam in real time.
+                    </p>
+                    <div class="flex flex-wrap gap-4 pt-4">
+                        <button onclick="navigateTo('dashboard')" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-bold px-8 py-4 rounded-xl shadow-lg shadow-emerald-500/10 hover:scale-102 hover:shadow-emerald-500/20 transition-all flex items-center space-x-2">
+                            <span>Open Analyzer Dashboard</span>
+                            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                        </button>
+                        <a href="#download" class="glass-panel text-gray-300 hover:text-white hover:bg-glassBorder font-bold px-8 py-4 rounded-xl border border-glassBorder transition-all flex items-center space-x-2">
+                            <i data-lucide="globe" class="w-5 h-5 text-skyBlue"></i>
+                            <span>Get Chrome Extension</span>
+                        </a>
+                    </div>
+                    <div class="flex items-center space-x-8 pt-6 border-t border-glassBorder">
+                        <div>
+                            <div class="text-2xl font-bold text-white text-glow">98.4%</div>
+                            <div class="text-xs text-gray-500">AI Accuracy</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-white text-glow-blue">2.5M+</div>
+                            <div class="text-xs text-gray-500">Reviews Analyzed</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-white">6+</div>
+                            <div class="text-xs text-gray-500">Platforms Supported</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="relative lg:block">
+                    <!-- Dashboard Preview mockup -->
+                    <div class="glass-panel p-6 rounded-2xl relative border border-glassBorder shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-glassBorder pb-4 mb-4">
+                            <div class="flex items-center space-x-2">
+                                <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+                                <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+                                <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                            </div>
+                            <span class="text-xs text-gray-500">EchoTrace Scanner Model UI</span>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                <div>
+                                    <div class="text-sm font-semibold text-white">Overall Trust Score</div>
+                                    <div class="text-xs text-gray-400">Calculated based on 47 parsed reviews</div>
+                                </div>
+                                <div class="text-3xl font-extrabold text-emerald-400">82.50%</div>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider">AI Classification</div>
+                                <div class="space-y-2 max-h-48 overflow-y-auto">
+                                    <div class="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-xs space-y-1">
+                                        <div class="flex justify-between font-semibold text-rose-400">
+                                            <span>Spam/Paid Review (92% Conf.)</span>
+                                            <span>By spammer101</span>
+                                        </div>
+                                        <p class="text-gray-300">"AMAZING PRODUCT! GET IT NOW! VISIT LINK FOR 50% OFF! WOW!!! EXCELLENT!"</p>
+                                    </div>
+                                    <div class="p-3 bg-emerald-500/5 border border-glassBorder rounded-lg text-xs space-y-1">
+                                        <div class="flex justify-between font-semibold text-emerald-400">
+                                            <span>Genuine Review (97% Conf.)</span>
+                                            <span>By Sarah T.</span>
+                                        </div>
+                                        <p class="text-gray-300">"The product works fine. Battery life is slightly shorter than expected."</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 2. LOGIN VIEW =================== -->
+        <section id="view-login" class="view-section hidden animate-fade-in py-12 flex justify-center">
+            <div class="w-full max-w-md glass-panel p-8 rounded-2xl border border-glassBorder shadow-2xl space-y-6">
+                <div class="text-center space-y-2">
+                    <h2 class="text-2xl font-bold text-white">Welcome Back</h2>
+                    <p class="text-sm text-gray-400">Verify reviews and secure your shopping purchases</p>
+                </div>
+                <div id="login-error" class="hidden p-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl text-center"></div>
+                <form id="login-form" onsubmit="submitLogin(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Email or Username</label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="text" id="login-input" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="username@echotrace.com">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Password</label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="password" id="login-password" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="••••••••">
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <label class="flex items-center space-x-2 cursor-pointer text-gray-400">
+                            <input type="checkbox" class="rounded border-glassBorder text-emeraldGreen focus:ring-0">
+                            <span>Remember me</span>
+                        </label>
+                        <a href="#forgot" class="text-emerald-400 hover:text-emerald-300">Forgot password?</a>
+                    </div>
+                    <button type="submit" class="w-full bg-gradient-to-r from-emeraldGreen to-skyBlue py-3 rounded-xl font-semibold text-white hover:scale-102 hover:shadow-lg transition-all text-sm">Sign In</button>
+                </form>
+                <div class="text-center text-xs text-gray-400">
+                    Don't have an account? <a href="#register" onclick="navigateTo('register')" class="text-emerald-400 hover:text-emerald-300 font-semibold">Sign Up</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 3. REGISTER VIEW =================== -->
+        <section id="view-register" class="view-section hidden animate-fade-in py-12 flex justify-center">
+            <div class="w-full max-w-md glass-panel p-8 rounded-2xl border border-glassBorder shadow-2xl space-y-6">
+                <div class="text-center space-y-2">
+                    <h2 class="text-2xl font-bold text-white">Create Account</h2>
+                    <p class="text-sm text-gray-400">Start auditing online product reviews today</p>
+                </div>
+                <div id="register-error" class="hidden p-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl text-center"></div>
+                <div id="register-success" class="hidden p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl text-center"></div>
+                <form id="register-form" onsubmit="submitRegister(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Username</label>
+                        <div class="relative">
+                            <i data-lucide="user" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="text" id="register-username" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="john_doe">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Email Address</label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="email" id="register-email" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="john@example.com">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Password</label>
+                        <div class="relative">
+                            <i data-lucide="lock" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                            <input type="password" id="register-password" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="Min. 6 characters">
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-gradient-to-r from-emeraldGreen to-skyBlue py-3 rounded-xl font-semibold text-white hover:scale-102 hover:shadow-lg transition-all text-sm">Sign Up</button>
+                </form>
+                <div class="text-center text-xs text-gray-400">
+                    Already have an account? <a href="#login" onclick="navigateTo('login')" class="text-emerald-400 hover:text-emerald-300 font-semibold">Sign In</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 4. DASHBOARD VIEW =================== -->
+        <section id="view-dashboard" class="view-section hidden animate-fade-in space-y-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-white tracking-tight">User Dashboard</h2>
+                    <p class="text-sm text-gray-400" id="dashboard-welcome">Welcome back, investigator</p>
+                </div>
+                <button onclick="openScanModal()" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/10 hover:scale-102 hover:shadow-emerald-500/20 transition-all flex items-center space-x-2 text-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>New Manual Scan</span>
+                </button>
+            </div>
+
+            <!-- Dashboard Stats Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4 border border-glassBorder">
+                    <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                        <i data-lucide="search" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="stat-scans">0</div>
+                        <div class="text-xs text-gray-400">Total Scans</div>
+                    </div>
+                </div>
+                <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4 border border-glassBorder">
+                    <div class="p-3 bg-rose-500/10 text-rose-400 rounded-xl">
+                        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="stat-fakes">0</div>
+                        <div class="text-xs text-gray-400">Fakes Blocked</div>
+                    </div>
+                </div>
+                <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4 border border-glassBorder">
+                    <div class="p-3 bg-sky-500/10 text-sky-400 rounded-xl">
+                        <i data-lucide="check-circle" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="stat-genuines">0</div>
+                        <div class="text-xs text-gray-400">Genuines Confirmed</div>
+                    </div>
+                </div>
+                <div class="glass-panel p-5 rounded-2xl flex items-center space-x-4 border border-glassBorder">
+                    <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+                        <i data-lucide="activity" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-white" id="stat-accuracy">98.4%</div>
+                        <div class="text-xs text-gray-400">AI Accuracy</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts & Analytics Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Line Chart -->
+                <div class="lg:col-span-2 glass-panel p-6 rounded-2xl border border-glassBorder flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-md font-semibold text-white">Trust Score Trends</h3>
+                        <span class="text-xs text-gray-400">Latest 7 Audits</span>
+                    </div>
+                    <div class="h-60 relative w-full">
+                        <canvas id="dashboardScanChart"></canvas>
+                    </div>
+                </div>
+                <!-- Platform Breakdown Pie -->
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder flex flex-col justify-between">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-md font-semibold text-white">Platform Distribution</h3>
+                        <span class="text-xs text-gray-400">Scans by website</span>
+                    </div>
+                    <div class="h-60 relative w-full">
+                        <canvas id="dashboardPlatformChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan History List -->
+            <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-2xl">
+                <div class="p-5 border-b border-glassBorder flex justify-between items-center">
+                    <h3 class="text-md font-semibold text-white">Recent Audit History</h3>
+                    <input type="text" id="history-search" oninput="filterHistory()" placeholder="Search history..." class="bg-[#030712]/50 border border-glassBorder rounded-xl px-4 py-1.5 text-xs text-white focus:outline-none focus:border-emeraldGreen w-48">
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-glassBorder/20 text-gray-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Platform</th>
+                                <th class="p-4">Product Name</th>
+                                <th class="p-4">Trust Score</th>
+                                <th class="p-4">Spam Detected</th>
+                                <th class="p-4">Date Scanned</th>
+                                <th class="p-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body" class="divide-y divide-glassBorder text-gray-300">
+                            <!-- populated dynamically -->
+                            <tr>
+                                <td colspan="6" class="p-8 text-center text-gray-500">No scan history found. Run a new scan above.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 5. REPORT VIEW =================== -->
+        <section id="view-report" class="view-section hidden animate-fade-in space-y-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-glassBorder pb-6">
+                <div>
+                    <button onclick="navigateTo('dashboard')" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 mb-2">
+                        <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i>
+                        <span>Back to Dashboard</span>
+                    </button>
+                    <h2 class="text-2xl font-extrabold text-white tracking-tight" id="report-title">Product Review Analysis</h2>
+                    <p class="text-sm text-gray-400" id="report-meta">Amazon | ASIN: B08N5WRWNW</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="exportReport('pdf')" class="glass-panel text-xs text-gray-300 hover:text-white px-4 py-2 border border-glassBorder rounded-xl flex items-center space-x-1.5">
+                        <i data-lucide="download" class="w-4 h-4 text-emeraldGreen"></i>
+                        <span>Export PDF</span>
+                    </button>
+                    <button onclick="exportReport('excel')" class="glass-panel text-xs text-gray-300 hover:text-white px-4 py-2 border border-glassBorder rounded-xl flex items-center space-x-1.5">
+                        <i data-lucide="file-text" class="w-4 h-4 text-skyBlue"></i>
+                        <span>Export Excel</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Product and Trust Score Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Product Details Card -->
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder flex flex-col justify-between space-y-4">
+                    <div class="flex items-center space-x-4">
+                        <img id="report-prod-img" src="https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=120" class="w-20 h-20 object-cover rounded-xl border border-glassBorder bg-darkBg" alt="product">
+                        <div>
+                            <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wide" id="report-prod-platform">AMAZON</div>
+                            <h3 class="text-md font-bold text-white line-clamp-2" id="report-prod-title">Nike Air Max Sneaker</h3>
+                            <div class="flex items-center mt-1 text-yellow-500 space-x-1">
+                                <i data-lucide="star" class="w-4 h-4 fill-current"></i>
+                                <span class="text-xs text-gray-200" id="report-prod-rating">4.5 / 5.0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <a id="report-prod-url" href="#" target="_blank" class="w-full text-center text-xs bg-glassBorder/30 text-gray-300 hover:text-white py-2 rounded-xl border border-glassBorder transition-colors flex items-center justify-center space-x-1">
+                        <span>View Original Page</span>
+                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                    </a>
+                </div>
+
+                <!-- Trust Score Ring Card -->
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder flex flex-col items-center justify-center space-y-4 text-center">
+                    <h3 class="text-sm font-semibold text-gray-400">Product Trust Score</h3>
+                    <div class="relative flex flex-col items-center justify-center">
+                        <div class="relative flex items-center justify-center">
+                            <!-- Score Display -->
+                            <div class="absolute text-center z-10 select-none">
+                                <span class="text-3xl font-black text-white tracking-tight" id="report-trust-score-pct">0%</span>
+                                <div class="text-[9px] text-gray-400 uppercase font-bold tracking-wider mt-0.5" id="report-risk-level">CALCULATING</div>
+                            </div>
+                            <div class="w-36 h-36 relative">
+                                <canvas id="reportTrustChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Premium HTML Legend -->
+                        <div class="flex items-center justify-center space-x-4 text-[10px] font-semibold text-gray-400 mt-2 select-none">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-2.5 h-2.5 rounded bg-emerald-500 inline-block border border-emerald-400/30"></span>
+                                <span>Genuine</span>
+                            </div>
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-2.5 h-2.5 rounded bg-rose-500 inline-block border border-rose-400/30"></span>
+                                <span>Fake/Spam</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400" id="report-verdict">Our system detected a low number of manipulated reviews.</p>
+                </div>
+
+                <!-- AI Recommendations Summary Card -->
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4">
+                    <h3 class="text-sm font-semibold text-gray-200 border-b border-glassBorder pb-2">AI Summary & Recommendation</h3>
+                    <div class="space-y-3 text-xs">
+                        <div class="flex justify-between items-center bg-glassBorder/10 px-3 py-1.5 rounded-xl border border-glassBorder/25">
+                            <span class="text-gray-400 font-semibold">Overall Genuine Quality:</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-sky-500/10 text-sky-400" id="report-quality">Good</span>
+                        </div>
+                        <div>
+                            <span class="font-semibold text-sky-400 flex items-center"><i data-lucide="sparkles" class="w-3.5 h-3.5 mr-1"></i> Summary of Genuine Reviews:</span>
+                            <p class="text-gray-300 mt-1 pl-1 italic leading-relaxed" id="report-genuine-summary">Loading...</p>
+                        </div>
+                        <div>
+                            <span class="font-semibold text-emerald-400 flex items-center"><i data-lucide="thumbs-up" class="w-3.5 h-3.5 mr-1"></i> Key Strengths:</span>
+                            <ul class="list-disc list-inside text-gray-300 pl-1 mt-1 space-y-0.5" id="report-strengths">
+                                <!-- populated dynamically -->
+                            </ul>
+                        </div>
+                        <div>
+                            <span class="font-semibold text-rose-400 flex items-center"><i data-lucide="thumbs-down" class="w-3.5 h-3.5 mr-1"></i> Key Weaknesses:</span>
+                            <ul class="list-disc list-inside text-gray-300 pl-1 mt-1 space-y-0.5" id="report-weaknesses">
+                                <!-- populated dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RAG Policy Grounding Executive Synthesis Card -->
+            <div id="report-rag-synthesis-card" class="glass-panel p-6 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/20 to-slate-900/40 space-y-4">
+                <div class="flex items-center justify-between border-b border-glassBorder pb-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                            <i data-lucide="shield-check" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-md font-bold text-white">RAG Policy Grounding & Executive Synthesis</h3>
+                            <p class="text-xs text-gray-400">Retrieval-Augmented audit cross-referenced against FTC & E-Commerce integrity standards</p>
+                        </div>
+                    </div>
+                    <span id="report-rag-risk-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">VERIFIED AUTHENTIC</span>
+                </div>
+                <div id="report-rag-summary-text" class="text-sm text-gray-200 leading-relaxed font-normal whitespace-pre-line">
+                    Loading grounded policy synthesis...
+                </div>
+                <div id="report-rag-citations" class="flex flex-wrap gap-2 pt-2 border-t border-glassBorder">
+                    <!-- Citation tags populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Annotated Reviews Breakdown -->
+            <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden">
+                <div class="p-5 border-b border-glassBorder flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h3 class="text-md font-semibold text-white">Review Audit Breakdown</h3>
+                        <p class="text-xs text-gray-400">Browse classification outputs and flag mismatches</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <select id="review-filter-label" onchange="filterReportReviews()" class="bg-[#030712]/50 border border-glassBorder rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none">
+                            <option value="all">All Reviews</option>
+                            <option value="fake">Fake/Suspicious Only</option>
+                            <option value="genuine">Genuine Only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="p-6 space-y-4" id="report-reviews-list">
+                    <!-- Dynamic review cards populated here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 6. PROFILE VIEW =================== -->
+        <section id="view-profile" class="view-section hidden animate-fade-in max-w-2xl mx-auto space-y-8">
+            <h2 class="text-3xl font-extrabold text-white tracking-tight">Account Settings</h2>
+            
+            <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-6">
+                <h3 class="text-md font-semibold text-white border-b border-glassBorder pb-2">Profile Information</h3>
+                <div id="profile-msg" class="hidden p-3 text-xs rounded-xl text-center"></div>
+                <form id="profile-form" onsubmit="submitProfile(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">Username</label>
+                            <input type="text" id="profile-username" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">Email Address</label>
+                            <input type="email" id="profile-email" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm">
+                        </div>
+                    </div>
+                    <button type="submit" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-semibold px-6 py-2.5 rounded-xl text-xs hover:scale-102 transition-all">Save Changes</button>
+                </form>
+            </div>
+
+            <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-6">
+                <h3 class="text-md font-semibold text-white border-b border-glassBorder pb-2">Update Password</h3>
+                <div id="password-msg" class="hidden p-3 text-xs rounded-xl text-center"></div>
+                <form id="password-form" onsubmit="submitPassword(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Current Password</label>
+                        <input type="password" id="pass-old" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="••••••••">
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">New Password</label>
+                            <input type="password" id="pass-new" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="Min. 6 characters">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">Confirm New Password</label>
+                            <input type="password" id="pass-confirm" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="Min. 6 characters">
+                        </div>
+                    </div>
+                    <button type="submit" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-semibold px-6 py-2.5 rounded-xl text-xs hover:scale-102 transition-all">Update Password</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- =================== 6.0 ABOUT VIEW =================== -->
+        <section id="view-about" class="view-section hidden animate-fade-in max-w-4xl mx-auto space-y-12 py-6">
+            <!-- Hero Header -->
+            <div class="text-center space-y-4">
+                <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full text-emerald-400 text-xs font-semibold tracking-wider uppercase">
+                    <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                    <span>About EchoTrace</span>
+                </div>
+                <h2 class="text-4xl font-extrabold tracking-tight text-white leading-tight">
+                    Smart Shopping Safeguarded by <span class="bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">AI Audits</span>
+                </h2>
+                <p class="text-gray-400 max-w-2xl mx-auto text-base">
+                    Online marketplaces are flooded with manipulated, sponsored, and AI-generated feedback. EchoTrace aims to bring transparency back to e-commerce using Natural Language Processing.
+                </p>
+            </div>
+
+            <!-- Technology Process Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4 animate-fade-in">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <i data-lucide="binary" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="text-md font-bold text-white">1. NLP Processing</h3>
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        Reviews are scraped directly from the store, cleaned of metadata noise, and analyzed for structural anomalies and spam triggers.
+                    </p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4 animate-fade-in">
+                    <div class="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                        <i data-lucide="brain-circuit" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="text-md font-bold text-white">2. AI Risk Prediction</h3>
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        Our advanced Natural Language Processing model evaluates reviewer sentiment, emotional biases, toxicity, and grammar quality.
+                    </p>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4 animate-fade-in">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                        <i data-lucide="copy" class="w-5 h-5"></i>
+                    </div>
+                    <h3 class="text-md font-bold text-white">3. Duplication Cluster</h3>
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        Detects copy-pasted seller spam or coordinate campaign reviews by mapping identical phrases across duplicate groups.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Detailed Mission Box -->
+            <div class="glass-panel p-8 rounded-2xl border border-glassBorder flex flex-col md:flex-row items-center gap-8 bg-gradient-to-r from-emeraldGreen/5 to-skyBlue/5">
+                <div class="space-y-4 flex-1">
+                    <h3 class="text-xl font-bold text-white">Our Vision & Core Objectives</h3>
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        We believe that honest shopper reviews are crucial for safe digital commerce. By leveraging automated classification algorithms, EchoTrace empowers buyers to spot warning signs and bad actors instantly.
+                    </p>
+                    <ul class="space-y-2 text-xs text-gray-300">
+                        <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Mitigate paid spam review campaigns</li>
+                        <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Expose bots and AI auto-generated content</li>
+                        <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Track sentiment patterns and duplicate clusters</li>
+                    </ul>
+                </div>
+                <div class="flex-shrink-0 w-full md:w-56 h-40 bg-slate-900/50 rounded-xl border border-glassBorder flex flex-col items-center justify-center space-y-2 select-none p-4">
+                    <i data-lucide="shield-check" class="w-12 h-12 text-emeraldGreen"></i>
+                    <div class="text-sm font-bold text-white">Secured Platform</div>
+                    <div class="text-[10px] text-gray-500 text-center">Version 1.0.0 Stable Active</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- =================== 6.1 CONTACT VIEW =================== -->
+        <section id="view-contact" class="view-section hidden animate-fade-in max-w-2xl mx-auto space-y-8">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center space-x-2 bg-sky-500/10 border border-sky-500/30 px-3 py-1 rounded-full text-sky-400 text-xs font-semibold tracking-wider uppercase">
+                    <i data-lucide="mail" class="w-3.5 h-3.5"></i>
+                    <span>Get In Touch</span>
+                </div>
+                <h2 class="text-3xl font-extrabold text-white tracking-tight">Contact Support</h2>
+                <p class="text-sm text-gray-400">Have questions about review auditing or API configurations? Send support a message.</p>
+            </div>
+            
+            <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-6">
+                <h3 class="text-md font-semibold text-white border-b border-glassBorder pb-2">Support Message Inquiry</h3>
+                <div id="contact-msg" class="hidden p-3 text-xs rounded-xl text-center"></div>
+                <form id="contact-form" onsubmit="submitContactForm(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">Your Name</label>
+                            <input type="text" id="contact-name" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="John Doe">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-xs font-semibold text-gray-400">Email Address</label>
+                            <input type="email" id="contact-email" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="john@example.com">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Subject</label>
+                        <input type="text" id="contact-subject" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm" placeholder="Inquiry about review scanning models">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Message Description</label>
+                        <textarea id="contact-message" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm h-32" placeholder="Describe your question or message..."></textarea>
+                    </div>
+                    <button type="submit" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-semibold px-6 py-2.5 rounded-xl text-xs hover:scale-102 transition-all">Submit message</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- =================== 6.2 RAG COPILOT & KNOWLEDGE CENTER VIEW =================== -->
+        <section id="view-rag-assistant" class="view-section hidden animate-fade-in space-y-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-glassBorder pb-6">
+                <div>
+                    <div class="inline-flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full text-emerald-400 text-xs font-semibold tracking-wider uppercase mb-2">
+                        <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+                        <span>Retrieval-Augmented Machine Learning</span>
+                    </div>
+                    <h2 class="text-3xl font-extrabold text-white tracking-tight">RAG AI Copilot & Knowledge Center</h2>
+                    <p class="text-sm text-gray-400">Query domain knowledge, FTC regulations, e-commerce policies, and manage TF-IDF vector index passages.</p>
+                </div>
+                
+                <div class="flex items-center space-x-3 bg-glassBorder/20 p-1.5 rounded-xl border border-glassBorder text-xs">
+                    <button id="rag-tab-btn-copilot" onclick="switchRagTab('copilot')" class="px-4 py-2 rounded-lg font-bold bg-gradient-to-r from-emeraldGreen to-skyBlue text-white transition-all">
+                        <i data-lucide="bot" class="w-4 h-4 inline-block mr-1"></i> RAG Copilot
+                    </button>
+                    <button id="rag-tab-btn-knowledge" onclick="switchRagTab('knowledge')" class="px-4 py-2 rounded-lg font-bold text-gray-400 hover:text-white transition-all">
+                        <i data-lucide="database" class="w-4 h-4 inline-block mr-1"></i> Knowledge Base
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 1: RAG Copilot Interactive Q&A -->
+            <div id="rag-tab-copilot" class="rag-tab-content space-y-6">
+                <!-- Status & Stats Header -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex items-center space-x-3">
+                        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                            <i data-lucide="activity" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 uppercase font-semibold">Engine Status</div>
+                            <div id="rag-status-badge" class="text-sm font-bold text-emerald-400">TF-IDF Active</div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex items-center space-x-3">
+                        <div class="p-3 bg-sky-500/10 text-sky-400 rounded-xl">
+                            <i data-lucide="file-text" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 uppercase font-semibold">Indexed Documents</div>
+                            <div id="rag-doc-count" class="text-sm font-bold text-white">0 Docs</div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex items-center space-x-3">
+                        <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl">
+                            <i data-lucide="layers" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 uppercase font-semibold">Vector Chunks</div>
+                            <div id="rag-chunk-count" class="text-sm font-bold text-white">0 Chunks</div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex items-center space-x-3">
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+                            <i data-lucide="book-open" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-gray-400 uppercase font-semibold">Vocabulary Size</div>
+                            <div id="rag-vocab-size" class="text-sm font-bold text-white">0 Terms</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Chat Box -->
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-2xl flex flex-col min-h-[500px]">
+                    <div class="p-4 border-b border-glassBorder bg-glassBorder/10 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
+                            <span class="text-xs font-bold text-gray-200">EchoTrace Grounded Copilot</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-[11px] text-gray-400">Category Filter:</label>
+                            <select id="rag-query-category" class="bg-[#030712]/60 border border-glassBorder text-xs text-white rounded-lg px-2 py-1">
+                                <option value="all">All Categories</option>
+                                <option value="policy">Policy & Compliance</option>
+                                <option value="fraud_pattern">Fraud Patterns</option>
+                                <option value="case_study">Case Studies</option>
+                                <option value="benchmark">Audit Benchmarks</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Suggested Query Prompts -->
+                    <div class="p-4 bg-[#030712]/40 border-b border-glassBorder flex flex-wrap gap-2 text-xs">
+                        <span class="text-gray-400 font-medium py-1">Suggested Prompts:</span>
+                        <button onclick="fillRagQuery('What are the FTC guidelines on paid reviews and free gifts?')" class="bg-glassBorder/30 hover:bg-glassBorder text-emerald-300 px-3 py-1 rounded-full border border-glassBorder transition-colors">FTC Endorsement Rules</button>
+                        <button onclick="fillRagQuery('How does Amazon detect astroturfing and review velocity bursts?')" class="bg-glassBorder/30 hover:bg-glassBorder text-sky-300 px-3 py-1 rounded-full border border-glassBorder transition-colors">Amazon Astroturfing Policy</button>
+                        <button onclick="fillRagQuery('What are Shopee brush order patterns and duplicated photo indicators?')" class="bg-glassBorder/30 hover:bg-glassBorder text-amber-300 px-3 py-1 rounded-full border border-glassBorder transition-colors">Shopee Brush Orders</button>
+                        <button onclick="fillRagQuery('How is rating-sentiment mismatch detected in fake reviews?')" class="bg-glassBorder/30 hover:bg-glassBorder text-purple-300 px-3 py-1 rounded-full border border-glassBorder transition-colors">Rating Mismatch Fraud</button>
+                    </div>
+
+                    <!-- Conversation Output Container -->
+                    <div id="rag-chat-output" class="p-6 flex-1 overflow-y-auto space-y-6 max-h-[500px]">
+                        <div class="flex items-start space-x-3">
+                            <div class="w-8 h-8 rounded-xl bg-gradient-to-r from-emeraldGreen to-skyBlue flex items-center justify-center text-white font-bold text-xs shrink-0">AI</div>
+                            <div class="glass-panel p-4 rounded-2xl border border-glassBorder text-xs text-gray-300 leading-relaxed max-w-2xl space-y-2">
+                                <p class="font-bold text-white">Welcome to the EchoTrace RAG Copilot!</p>
+                                <p>Ask any question regarding e-commerce fake review detection, FTC disclosures, platform seller conduct, or EchoTrace audit formulas. Every response is grounded directly in indexed domain documents.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Form -->
+                    <div class="p-4 border-t border-glassBorder bg-[#030712]/80">
+                        <form id="rag-query-form" onsubmit="submitRagQuery(event)" class="flex gap-3">
+                            <input type="text" id="rag-query-input" required class="flex-1 bg-[#030712] border border-glassBorder rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emeraldGreen" placeholder="Ask RAG Copilot a policy or review audit question...">
+                            <button type="submit" id="rag-query-btn" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-bold px-6 py-3 rounded-xl hover:scale-102 transition-all text-xs flex items-center space-x-2 shrink-0">
+                                <i data-lucide="send" class="w-4 h-4"></i>
+                                <span>Search & Synthesize</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Knowledge Base Manager -->
+            <div id="rag-tab-knowledge" class="rag-tab-content hidden space-y-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Domain Knowledge Vector Store</h3>
+                        <p class="text-xs text-gray-400">Indexed policy documents and fraud rules used to ground AI responses and review explanations.</p>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button onclick="reindexRagStore()" class="border border-glassBorder text-gray-300 hover:text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-glassBorder transition-colors flex items-center space-x-1.5">
+                            <i data-lucide="refresh-cw" class="w-4 h-4 text-emerald-400"></i>
+                            <span>Re-Index Store</span>
+                        </button>
+                        <button onclick="openAddKnowledgeModal()" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white px-4 py-2 rounded-xl text-xs font-bold hover:scale-102 transition-all flex items-center space-x-1.5">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add Knowledge Document</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Documents List Table -->
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-glassBorder/20 text-gray-400 uppercase text-[10px] tracking-wider">
+                            <tr>
+                                <th class="p-4">Doc ID</th>
+                                <th class="p-4">Title</th>
+                                <th class="p-4">Category</th>
+                                <th class="p-4">Tags</th>
+                                <th class="p-4">Chunks</th>
+                                <th class="p-4 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rag-docs-table-body" class="divide-y divide-glassBorder text-gray-300">
+                            <!-- Populated dynamically -->
+                            <tr>
+                                <td colspan="6" class="p-8 text-center text-gray-500">Loading indexed documents...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Add Knowledge Modal -->
+        <div id="rag-add-modal" class="hidden fixed inset-0 bg-[#030712]/90 flex items-center justify-center p-4 z-50">
+            <div class="w-full max-w-xl glass-panel p-6 border border-glassBorder shadow-2xl space-y-6 relative rounded-2xl animate-fade-in">
+                <button onclick="closeAddKnowledgeModal()" class="absolute right-4 top-4 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-glassBorder">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+                <h3 class="text-lg font-bold text-white flex items-center">
+                    <i data-lucide="file-plus" class="w-5 h-5 mr-2 text-emeraldGreen"></i> Add Knowledge Base Document
+                </h3>
+                
+                <form id="rag-add-form" onsubmit="submitAddKnowledge(event)" class="space-y-4 text-xs">
+                    <div class="space-y-1">
+                        <label class="font-semibold text-gray-400">Document Title</label>
+                        <input type="text" id="rag-add-title" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl p-2.5 text-white focus:outline-none focus:border-emeraldGreen" placeholder="e.g. Lazada Review Authenticity Standard 2026">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="font-semibold text-gray-400">Category</label>
+                            <select id="rag-add-category" class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl p-2.5 text-white focus:outline-none text-xs">
+                                <option value="policy">Policy & Compliance</option>
+                                <option value="fraud_pattern">Fraud Pattern</option>
+                                <option value="case_study">Case Study</option>
+                                <option value="benchmark">Audit Benchmark</option>
+                                <option value="custom">Custom Rule</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="font-semibold text-gray-400">Tags (comma-separated)</label>
+                            <input type="text" id="rag-add-tags" class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl p-2.5 text-white focus:outline-none" placeholder="legal, bot_detection, lazada">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="font-semibold text-gray-400">Document Content Text</label>
+                        <textarea id="rag-add-content" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl p-3 text-white focus:outline-none h-36" placeholder="Paste detailed regulatory text, platform policy rules, or custom fraud detection heuristics..."></textarea>
+                    </div>
+
+                    <button type="submit" class="w-full bg-gradient-to-r from-emeraldGreen to-skyBlue py-3 rounded-xl font-bold text-white hover:scale-102 transition-all flex items-center justify-center space-x-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span>Index Document in Vector Store</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- =================== 7. ADMIN PANEL =================== -->
+        <section id="view-admin" class="view-section hidden animate-fade-in space-y-8">
+            <h2 class="text-3xl font-extrabold text-white tracking-tight">Administrator Panel</h2>
+
+            <!-- Admin Nav Tabs -->
+            <div class="flex flex-wrap gap-x-6 border-b border-glassBorder text-sm">
+                <button onclick="switchAdminTab('dashboard')" id="tab-dashboard-btn" class="py-2 border-b-2 border-emeraldGreen text-white font-semibold transition-all">Dashboard</button>
+                <button onclick="switchAdminTab('users')" id="tab-users-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">User Accounts</button>
+                <button onclick="switchAdminTab('feedback')" id="tab-feedback-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">Community Reports</button>
+                <button onclick="switchAdminTab('reports')" id="tab-reports-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">Reports</button>
+                <button onclick="switchAdminTab('products')" id="tab-products-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">Products</button>
+                <button onclick="switchAdminTab('logs')" id="tab-logs-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">System Logs</button>
+                <button onclick="switchAdminTab('settings')" id="tab-settings-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">System Settings</button>
+                <button onclick="switchAdminTab('retrain')" id="tab-retrain-btn" class="py-2 border-b-2 border-transparent text-gray-400 hover:text-white transition-all">AI Retrain</button>
+            </div>
+
+            <!-- Tab 0: Dashboard -->
+            <div id="admin-tab-dashboard" class="admin-tab-content hidden space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex flex-col items-center">
+                        <div class="text-sm text-gray-400">Statistics</div>
+                        <div id="admin-stat-users" class="text-2xl font-bold text-white">0</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex flex-col items-center">
+                        <div class="text-sm text-gray-400">AI Accuracy</div>
+                        <div id="admin-stat-ai-accuracy" class="text-2xl font-bold text-white">0%</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex flex-col items-center">
+                        <div class="text-sm text-gray-400">Fake Review Analytics</div>
+                        <div id="admin-stat-fake-analytics" class="text-2xl font-bold text-white">0</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex flex-col items-center">
+                        <div class="text-sm text-gray-400">User Growth</div>
+                        <div id="admin-stat-user-growth" class="text-2xl font-bold text-white">0%</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl border border-glassBorder flex flex-col items-center">
+                        <div class="text-sm text-gray-400">Product Analytics</div>
+                        <div id="admin-stat-product-analytics" class="text-2xl font-bold text-white">0</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Tab 1: User Accounts -->
+            <div id="admin-tab-users" class="admin-tab-content space-y-4">
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-glassBorder/20 text-gray-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">ID</th>
+                                <th class="p-4">Username</th>
+                                <th class="p-4">Email</th>
+                                <th class="p-4">Role</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-users-table-body" class="divide-y divide-glassBorder text-gray-300">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 2: Feedback (Community Reports) -->
+            <div id="admin-tab-feedback" class="admin-tab-content hidden space-y-4">
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-glassBorder/20 text-gray-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Reporter</th>
+                                <th class="p-4">Product</th>
+                                <th class="p-4">Author</th>
+                                <th class="p-4">Comment</th>
+                                <th class="p-4">Correction Label</th>
+                                <th class="p-4">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-feedback-table-body" class="divide-y divide-glassBorder text-gray-300">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 3: System Logs -->
+            <div id="admin-tab-logs" class="admin-tab-content hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- AI Logs -->
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl flex flex-col">
+                    <div class="p-4 border-b border-glassBorder font-bold text-gray-200">AI Microservice API Logs (Flask)</div>
+                    <div class="p-4 space-y-3 max-h-96 overflow-y-auto text-xs" id="admin-logs-ai">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+                <!-- Login Logs -->
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl flex flex-col">
+                    <div class="p-4 border-b border-glassBorder font-bold text-gray-200">System Authentication Logs</div>
+                    <div class="p-4 space-y-3 max-h-96 overflow-y-auto text-xs" id="admin-logs-auth">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 4: Retrain Model -->
+            <div id="admin-tab-retrain" class="admin-tab-content hidden space-y-6 max-w-2xl mx-auto">
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder text-center space-y-4">
+                    <div class="p-4 bg-emerald-500/10 text-emerald-400 rounded-full w-16 h-16 flex items-center justify-center mx-auto">
+                        <i data-lucide="cpu" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-white">Retrain Fake Review Classifier</h3>
+                    <p class="text-sm text-gray-400 leading-relaxed">
+                        Gather submitted community correction reports and fine-tune the Logistic Regression TF-IDF classification weights. Retraining improves prediction confidence and fixes local classification errors.
+                    </p>
+                    <div id="retrain-msg" class="hidden p-3 text-xs rounded-xl text-center"></div>
+                    <button onclick="triggerRetraining()" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-bold px-8 py-3 rounded-xl hover:scale-102 transition-all text-sm flex items-center space-x-2 justify-center mx-auto">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        <span>Start Retraining Cycle</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab 5: Reports -->
+            <div id="admin-tab-reports" class="admin-tab-content hidden space-y-4">
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl">
+                    <div class="p-4 border-b border-glassBorder font-bold text-gray-200 flex items-center justify-between">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="file-text" class="w-4 h-4 text-emeraldGreen"></i> Scan Reports
+                        </span>
+                        <span id="admin-reports-count" class="text-xs text-gray-500 font-normal"></span>
+                    </div>
+                    <div id="admin-reports-list" class="overflow-x-auto text-sm text-gray-400">
+                        <p class="text-center py-8 text-gray-500">Loading reports...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 6: Products -->
+            <div id="admin-tab-products" class="admin-tab-content hidden space-y-4">
+                <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden shadow-xl">
+                    <div class="p-4 border-b border-glassBorder font-bold text-gray-200 flex items-center gap-2">
+                        <i data-lucide="package" class="w-4 h-4 text-skyBlue"></i> Scanned Products
+                    </div>
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-glassBorder/20 text-gray-400 uppercase text-xs">
+                            <tr>
+                                <th class="p-4">Product</th>
+                                <th class="p-4">Platform</th>
+                                <th class="p-4">Scans</th>
+                                <th class="p-4">Fake %</th>
+                                <th class="p-4">Last Scanned</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-products-table-body" class="divide-y divide-glassBorder text-gray-300">
+                            <tr><td colspan="5" class="p-8 text-center text-gray-500">No products found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 7: System Settings -->
+            <div id="admin-tab-settings" class="admin-tab-content hidden space-y-6 max-w-2xl">
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4">
+                    <h3 class="font-bold text-white text-lg flex items-center gap-2">
+                        <i data-lucide="settings" class="w-5 h-5 text-emeraldGreen"></i> System Settings
+                    </h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center justify-between p-3 bg-glassBg rounded-xl border border-glassBorder">
+                            <div>
+                                <div class="font-semibold text-gray-200">Maintenance Mode</div>
+                                <div class="text-xs text-gray-500">Disable public access during updates</div>
+                            </div>
+                            <label class="toggle-switch"><input type="checkbox" id="setting-maintenance"><span class="toggle-slider"></span></label>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-glassBg rounded-xl border border-glassBorder">
+                            <div>
+                                <div class="font-semibold text-gray-200">AI Auto-Retrain</div>
+                                <div class="text-xs text-gray-500">Automatically retrain model weekly</div>
+                            </div>
+                            <label class="toggle-switch"><input type="checkbox" id="setting-autoretrain" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-glassBg rounded-xl border border-glassBorder">
+                            <div>
+                                <div class="font-semibold text-gray-200">User Registration</div>
+                                <div class="text-xs text-gray-500">Allow new users to register</div>
+                            </div>
+                            <label class="toggle-switch"><input type="checkbox" id="setting-registration" checked><span class="toggle-slider"></span></label>
+                        </div>
+                    </div>
+                    <button class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-bold px-6 py-2 rounded-xl text-sm transition-all hover:scale-105" onclick="alert('Settings saved!')">Save Settings</button>
+                </div>
+            </div>
+
+            <!-- Tab 8: Backup/Restore removed — merged into retrain; kept as alias -->
+            <div id="admin-tab-backup" class="admin-tab-content hidden space-y-4">
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder text-center space-y-4">
+                    <i data-lucide="database" class="w-10 h-10 text-skyBlue mx-auto"></i>
+                    <h3 class="font-bold text-white text-lg">Backup & Restore</h3>
+                    <p class="text-sm text-gray-400">Export a full JSON backup of all users, scans, and community reports. Restore from a previous backup file.</p>
+                    <div class="flex gap-4 justify-center">
+                        <button onclick="alert('Backup exported!')" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-bold px-6 py-2 rounded-xl text-sm transition-all hover:scale-105 flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export Backup
+                        </button>
+                        <button onclick="document.getElementById('backup-upload').click()" class="border border-glassBorder text-gray-300 hover:text-white font-bold px-6 py-2 rounded-xl text-sm transition-all hover:bg-glassBorder flex items-center gap-2">
+                            <i data-lucide="upload" class="w-4 h-4"></i> Restore Backup
+                        </button>
+                        <input type="file" id="backup-upload" accept=".json" class="hidden">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-glassBorder mt-12 bg-[#060a12]/80 text-gray-500 py-8 text-center text-xs">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <span class="font-semibold text-gray-400">&copy; 2026 EchoTrace fake review auditing systems. All Rights Reserved.</span>
+            <div class="flex space-x-4">
+                <a href="#" class="hover:text-emeraldGreen">Privacy Policy</a>
+                <a href="#" class="hover:text-emeraldGreen">Terms of Service</a>
+                <a href="#" class="hover:text-emeraldGreen">API Support</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Manual Scan Modal -->
+    <div id="scan-modal" class="hidden fixed inset-0 bg-[#030712]/90 flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div class="w-full max-w-2xl glass-panel p-6 border border-glassBorder shadow-2xl space-y-6 relative rounded-2xl animate-fade-in my-8">
+            <button onclick="closeScanModal()" class="absolute right-4 top-4 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-glassBorder">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <h3 class="text-xl font-bold text-white flex items-center"><i data-lucide="search" class="w-5 h-5 mr-2 text-emeraldGreen"></i> Run Manual Review Audit</h3>
+            
+            <div id="scan-error" class="hidden p-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs rounded-xl"></div>
+            
+            <form id="scan-form" onsubmit="submitScan(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Platform</label>
+                        <select id="scan-platform" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs">
+                            <option value="amazon">Amazon</option>
+                            <option value="shopee">Shopee</option>
+                            <option value="lazada">Lazada</option>
+                            <option value="ebay">eBay</option>
+                            <option value="aliexpress">AliExpress</option>
+                            <option value="walmart">Walmart</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Product External ID (e.g. ASIN)</label>
+                        <input type="text" id="scan-ext-id" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs" placeholder="B08N5WRWNW">
+                    </div>
+                </div>
+                
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-gray-400">Product Name/Title</label>
+                    <input type="text" id="scan-title" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs" placeholder="Sample Wireless Headset 2026 Edition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Product Image URL</label>
+                        <input type="text" id="scan-image" class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs" placeholder="https://image-link.com/img.jpg">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-gray-400">Product Rating (0.0 to 5.0)</label>
+                        <input type="number" step="0.1" min="0" max="5" id="scan-rating" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs" placeholder="4.5">
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-gray-400">Product URL</label>
+                    <input type="url" id="scan-url" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2 px-3 text-white focus:outline-none text-xs" placeholder="https://amazon.com/product-link">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-semibold text-gray-400">Paste Reviews (JSON array or one review text per line)</label>
+                        <button type="button" onclick="loadSampleReviews()" class="text-[10px] text-emerald-400 hover:text-emerald-300">Load sample reviews</button>
+                    </div>
+                    <textarea id="scan-reviews" required class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl p-3 text-white focus:outline-none text-xs h-32" placeholder="Example format:&#10;[{&quot;author&quot;:&quot;John&quot;, &quot;rating&quot;:5, &quot;text&quot;:&quot;Amazing product!&quot;}]&#10;or just write plain reviews, one per line."></textarea>
+                </div>
+
+                <button type="submit" id="scan-submit-btn" class="w-full bg-gradient-to-r from-emeraldGreen to-skyBlue py-2.5 rounded-xl font-semibold text-white hover:scale-102 transition-all text-xs flex items-center justify-center space-x-2">
+                    <i data-lucide="play" class="w-4 h-4"></i>
+                    <span>Execute Review Audit</span>
+                </button>
+            </form>
+
+            <div id="scan-loader" class="hidden absolute inset-0 bg-[#030712]/80 flex flex-col items-center justify-center rounded-2xl">
+                <div class="spinner mb-4"></div>
+                <p class="text-sm font-semibold text-white">Analyzing reviews...</p>
+                <p class="text-xs text-gray-400">Preprocessing text and running Machine Learning predictions</p>
+            </div>
+        </div>
+    </div>
+    <!-- Script Imports with Cache Busting -->
+    <script src="js/api.js?v=20260717"></script>
+    <script src="js/auth.js?v=20260717"></script>
+    <script src="js/charts.js?v=20260717"></script>
+    <script src="js/app.js?v=20260717"></script>
+</body>
+</html>
+
+        <!-- =================== AUDIT HISTORY PAGE (NEW) =================== -->
+        <section id="view-audit-history" class="view-section hidden animate-fade-in space-y-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-white tracking-tight">Audit History</h2>
+                    <p class="text-sm text-gray-400">View and manage all your product scans</p>
+                </div>
+                <button onclick="openScanModal()" class="bg-gradient-to-r from-emeraldGreen to-skyBlue text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-500/10 hover:scale-102 hover:shadow-emerald-500/20 transition-all flex items-center space-x-2 text-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>New Scan</span>
+                </button>
+            </div>
+
+            <!-- Search & Filter Section -->
+            <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-4">
+                <div class="flex flex-col md:flex-row gap-4">
+                    <div class="flex-1 relative">
+                        <i data-lucide="search" class="absolute left-3 top-3 w-5 h-5 text-gray-500"></i>
+                        <input type="text" id="history-search-bar" onkeyup="filterAuditHistory()" placeholder="Search by product name or platform..." class="w-full bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:border-emeraldGreen text-sm">
+                    </div>
+                    <select id="history-platform-filter" onchange="filterAuditHistory()" class="bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm">
+                        <option value="">All Platforms</option>
+                        <option value="amazon">Amazon</option>
+                        <option value="shopee">Shopee</option>
+                        <option value="lazada">Lazada</option>
+                        <option value="ebay">eBay</option>
+                        <option value="aliexpress">AliExpress</option>
+                        <option value="walmart">Walmart</option>
+                    </select>
+                    <select id="history-trust-filter" onchange="filterAuditHistory()" class="bg-[#030712]/50 border border-glassBorder rounded-xl py-2.5 px-4 text-white focus:outline-none focus:border-emeraldGreen text-sm">
+                        <option value="">All Trust Levels</option>
+                        <option value="high">High (80-100%)</option>
+                        <option value="medium">Medium (50-79%)</option>
+                        <option value="low">Low (0-49%)</option>
+                    </select>
+                </div>
+                <div class="text-xs text-gray-400">
+                    <span id="history-result-count">0 scans</span>
+                </div>
+            </div>
+
+            <!-- Audit History Table -->
+            <div class="glass-panel rounded-2xl border border-glassBorder overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-[#030712]/50 border-b border-glassBorder">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Platform</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Product</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Trust Score</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Reviews</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Date</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Risk Level</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-history-table-body" class="divide-y divide-glassBorder">
+                            <!-- Populated dynamically -->
+                            <tr>
+                                <td colspan="7" class="p-8 text-center text-gray-500">Loading audit history...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pagination Section (if needed) -->
+            <div id="history-pagination" class="flex items-center justify-center gap-2 mt-6 hidden">
+                <button onclick="previousHistoryPage()" class="p-2 rounded-lg border border-glassBorder hover:bg-glassBorder text-gray-400 hover:text-white transition-colors">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                <span id="pagination-info" class="text-sm text-gray-400">Page 1 of 1</span>
+                <button onclick="nextHistoryPage()" class="p-2 rounded-lg border border-glassBorder hover:bg-glassBorder text-gray-400 hover:text-white transition-colors">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Summary Stats for History -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-2">
+                    <div class="text-xs text-gray-400 uppercase tracking-wider">Total Scans</div>
+                    <div class="text-3xl font-bold text-white" id="history-total-scans">0</div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-2">
+                    <div class="text-xs text-gray-400 uppercase tracking-wider">Average Trust Score</div>
+                    <div class="text-3xl font-bold text-emerald-400" id="history-avg-trust">0.0%</div>
+                </div>
+                <div class="glass-panel p-6 rounded-2xl border border-glassBorder space-y-2">
+                    <div class="text-xs text-gray-400 uppercase tracking-wider">Reviews Analyzed</div>
+                    <div class="text-3xl font-bold text-sky-400" id="history-total-reviews">0</div>
+                </div>
+            </div>
+        </section>

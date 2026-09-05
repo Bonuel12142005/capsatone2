@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EchoTrace - fake review audit</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-accent">EchoTrace</span> AI
+            </div>
+            <button id="settings-btn" class="icon-btn" title="API Configuration">
+                ⚙️
+            </button>
+        </header>
+
+        <!-- Main Content -->
+        <main class="content">
+            
+            <!-- Scan Results Panel (shown at top after scan) -->
+            <div id="scan-results-panel" class="hidden">
+                <div class="results-card">
+                    <div class="results-header">
+                        <span class="results-title">🛡️ Audit Results</span>
+                        <button id="close-results-btn" class="results-close" title="Dismiss">✕</button>
+                    </div>
+                    <div class="results-score-row">
+                        <div class="results-score-circle" id="results-score-circle">
+                            <span id="results-score-value">--</span>
+                            <span class="results-score-label">Trust</span>
+                        </div>
+                        <div class="results-meta">
+                            <div id="results-product-title" class="results-product-name">Product</div>
+                            <div id="results-risk-badge" class="results-risk-badge">LOW RISK</div>
+                            <div id="results-review-count" class="results-review-count">0 reviews analyzed</div>
+                        </div>
+                    </div>
+                    <div class="results-details">
+                        <div class="results-section">
+                            <div class="results-section-label strengths-label">✅ Strengths</div>
+                            <ul id="results-strengths" class="results-list"></ul>
+                        </div>
+                        <div class="results-section">
+                            <div class="results-section-label weaknesses-label">⚠️ Weaknesses</div>
+                            <ul id="results-weaknesses" class="results-list"></ul>
+                        </div>
+                        <div id="results-recommendation" class="results-recommendation"></div>
+                    </div>
+                    <div class="results-actions">
+                        <a id="results-view-report" href="#" target="_blank" class="btn primary-btn results-report-btn">View Full Report</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connection Status Banner -->
+            <div id="connection-banner" class="status-banner info">
+                Initializing service worker...
+            </div>
+
+            <!-- Dashboard status (Logged in user) -->
+            <div id="status-dashboard" class="hidden pane">
+                <div class="user-profile">
+                    <span class="user-icon">👤</span>
+                    <div>
+                        <div id="user-display-name" class="username">Guest Shopper</div>
+                        <div class="user-role">Account Synced</div>
+                    </div>
+                </div>
+                <div class="instruction-box">
+                    <p>Navigate to any product page on <b>Amazon</b> or <b>Shopee</b> and click the floating <b>Audit reviews</b> button on the bottom right.</p>
+                </div>
+                <button id="logout-btn" class="btn secondary-btn">Disconnect Account</button>
+            </div>
+
+            <!-- Login Box (Not logged in) -->
+            <div id="status-login" class="pane">
+                <div class="intro-text">Sign in to sync your audits with your dashboard history.</div>
+                <div id="login-error" class="error-msg hidden"></div>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label>Username / Email</label>
+                        <input type="text" id="login-input" required placeholder="username@echotrace.com">
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn primary-btn">Sign In & Sync</button>
+                </form>
+            </div>
+
+            <!-- Settings Box (Hidden by default) -->
+            <div id="status-settings" class="hidden pane">
+                <h3>System Configuration</h3>
+                <div class="input-group">
+                    <label>PHP API URL Base</label>
+                    <input type="url" id="settings-api-url" placeholder="http://localhost/capsatone2/backend/api/index.php">
+                </div>
+                <button id="save-settings-btn" class="btn primary-btn">Save Configurations</button>
+                <button id="close-settings-btn" class="btn secondary-btn">Back</button>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            EchoTrace Fake Review Detector &copy; 2026
+        </footer>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
