@@ -54,8 +54,10 @@ CREATE TABLE IF NOT EXISTS `review_analysis` (
   `emotion` VARCHAR(50) DEFAULT NULL, -- anger, joy, fear, surprise, etc.
   `toxicity` DECIMAL(5,2) DEFAULT 0.00, -- toxicity percentage
   `duplicate_group_id` INT DEFAULT NULL, -- groups identical or highly similar reviews
+  `language` VARCHAR(30) DEFAULT NULL,
   `fake_reasons` TEXT DEFAULT NULL, -- JSON formatted list of reasons (e.g. duplicate patterns, toxic, high sentiment mismatch)
   `checked_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_review_analysis_review` (`review_id`),
   FOREIGN KEY (`review_id`) REFERENCES `reviews`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
@@ -67,7 +69,15 @@ CREATE TABLE IF NOT EXISTS `scan_history` (
   `trust_score` DECIMAL(5,2) NOT NULL, -- computed product trust score (0-100%)
   `fake_count` INT DEFAULT 0,
   `genuine_count` INT DEFAULT 0,
+  `uncertain_count` INT DEFAULT 0,
+  `risk_level` VARCHAR(20) DEFAULT 'Low Risk',
+  `review_ids_json` LONGTEXT DEFAULT NULL,
+  `request_id` VARCHAR(64) DEFAULT NULL,
+  `duration_ms` INT DEFAULT NULL,
+  `review_source` VARCHAR(40) DEFAULT NULL,
+  `scan_metadata` LONGTEXT DEFAULT NULL,
   `scan_date` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_scan_user_request` (`user_id`, `request_id`),
   FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -81,6 +91,7 @@ CREATE TABLE IF NOT EXISTS `reports` (
   `summary_weaknesses` TEXT DEFAULT NULL, -- JSON list of product weaknesses
   `summary_recommendation` TEXT DEFAULT NULL, -- Overall purchase recommendation
   `generated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_reports_scan_history` (`scan_history_id`),
   FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
   FOREIGN KEY (`scan_history_id`) REFERENCES `scan_history`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
@@ -89,10 +100,19 @@ CREATE TABLE IF NOT EXISTS `reports` (
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NOT NULL,
+  `scan_id` INT NULL,
+  `type` VARCHAR(40) NOT NULL DEFAULT 'system',
+  `title` VARCHAR(150) NOT NULL DEFAULT 'EchoTrace update',
   `message` VARCHAR(255) NOT NULL,
   `is_read` TINYINT(1) DEFAULT 0,
+  `read_at` TIMESTAMP NULL DEFAULT NULL,
+  `event_key` VARCHAR(120) NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`scan_id`) REFERENCES `scan_history`(`id`) ON DELETE SET NULL,
+  INDEX `idx_notifications_user_created` (`user_id`, `created_at`),
+  INDEX `idx_notifications_user_unread` (`user_id`, `is_read`),
+  UNIQUE KEY `uq_notifications_event` (`user_id`, `event_key`)
 ) ENGINE=InnoDB;
 
 -- 8. Feedback (Community Reports) Table
@@ -142,8 +162,8 @@ CREATE TABLE IF NOT EXISTS `login_logs` (
 -- User: User123!
 
 INSERT IGNORE INTO `users` (`username`, `email`, `password_hash`, `role`, `status`) VALUES
-('admin', 'admin@echotrace.com', '$2y$10$cl8bWY0asJ3KOBj6mn90SODN3etp645WgBRMWaymUEf771hiXrI.m', 'admin', 'active'),
-('user', 'user@echotrace.com', '$2y$10$Puh9RJ2JSHG8nXq6X3nDi.0cmSQcyDBqh1H6TSPbeQzLOfkTa2s7O', 'user', 'active');
+('admin', 'admin@echotrace.com', '$2y$10$Am2O44ForN7cV4O/mAebN.DncBKBK7VSV3G9kAGAuOIqwZYKjN/sy', 'admin', 'active'),
+('user', 'user@echotrace.com', '$2y$10$zjhCIxJ25vBbojJWnU4Q1eDEk/5MjMjvD6vh6ju.ZlMH0wgVDL02K', 'user', 'active');
 
 INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('ai_detection_threshold', '0.65'),

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title description">
+  <title id="title">Default EchoTrace profile avatar</title>
+  <desc id="description">A user silhouette on an EchoTrace blue and green gradient.</desc>
+  <defs>
+    <linearGradient id="background" x1="12" y1="8" x2="116" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00d4ff"/>
+      <stop offset="1" stop-color="#00e5a0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="61" fill="#020b18" stroke="url(#background)" stroke-width="6"/>
+  <circle cx="64" cy="47" r="22" fill="url(#background)"/>
+  <path d="M25 106c5-23 19-34 39-34s34 11 39 34" fill="url(#background)"/>
+</svg>

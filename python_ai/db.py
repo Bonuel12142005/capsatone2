@@ -1,20 +1,23 @@
+import os
 import mysql.connector # type: ignore
 from mysql.connector import Error # type: ignore
+
+from typing import Any, Optional, Union, cast
 
 def get_db_connection():
     try:
         connection = mysql.connector.connect(
-            host='127.0.0.1',
-            database='echotrace',
-            user='root',
-            password=''
+            host=os.environ.get('ECHOTRACE_DB_HOST', '127.0.0.1'),
+            database=os.environ.get('ECHOTRACE_DB_NAME', 'echotrace'),
+            user=os.environ.get('ECHOTRACE_DB_USER', 'root'),
+            password=os.environ.get('ECHOTRACE_DB_PASSWORD', '')
         )
         return connection
     except Error as e:
         print(f"Error while connecting to MySQL: {e}")
         return None
 
-def fetch_one(query, params=None):
+def fetch_one(query: str, params: Any = None) -> Optional[dict[str, Any]]:
     conn = get_db_connection()
     if not conn:
         return None
@@ -23,11 +26,11 @@ def fetch_one(query, params=None):
         cursor.execute(query, params or ())
         result = cursor.fetchone()
         cursor.close()
-        return result
+        return cast(Optional[dict[str, Any]], result)
     finally:
         conn.close()
 
-def fetch_all(query, params=None):
+def fetch_all(query: str, params: Any = None) -> list[dict[str, Any]]:
     conn = get_db_connection()
     if not conn:
         return []
@@ -36,11 +39,11 @@ def fetch_all(query, params=None):
         cursor.execute(query, params or ())
         result = cursor.fetchall()
         cursor.close()
-        return result
+        return cast(list[dict[str, Any]], result)
     finally:
         conn.close()
 
-def execute_query(query, params=None):
+def execute_query(query: str, params: Any = None) -> Optional[int]:
     conn = get_db_connection()
     if not conn:
         return None

@@ -9,12 +9,8 @@ $EMAIL = 'mckenllyhuertas@gmail.com';
 $PASSWORD = 'MC123456';
 
 try {
-    $db = new PDO(
-        "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME,
-        DB_USER,
-        DB_PASS,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
+    $database = new Database();
+    $db = $database->getConnection();
 
     // Hash the password with bcrypt
     $password_hash = password_hash($PASSWORD, PASSWORD_BCRYPT);

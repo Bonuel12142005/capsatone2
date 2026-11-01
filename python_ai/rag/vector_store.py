@@ -24,9 +24,13 @@ class VectorStore:
 
     def _chunk_text(self, text, chunk_size=350, overlap=50):
         """Splits text into overlapping semantic passages."""
+        if not isinstance(text, str):
+            return []
         text = text.strip()
         if not text:
             return []
+        chunk_size = max(100, int(chunk_size))
+        overlap = max(0, min(int(overlap), chunk_size - 1))
         
         # Split by paragraphs or sentences first
         sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -39,10 +43,9 @@ class VectorStore:
             else:
                 if current_chunk:
                     chunks.append(current_chunk)
-                # Apply overlap if possible
-                words = current_chunk.split()
-                overlap_words = words[-10:] if len(words) >= 10 else words
-                current_chunk = " ".join(overlap_words) + " " + sentence
+                # Retain approximately the configured character overlap.
+                overlap_text = current_chunk[-overlap:].strip() if overlap else ''
+                current_chunk = (overlap_text + " " + sentence).strip()
                 
         if current_chunk and current_chunk not in chunks:
             chunks.append(current_chunk)
@@ -51,6 +54,12 @@ class VectorStore:
 
     def add_document(self, title, content, category="general", tags=None, doc_id=None, save_after=True):
         """Adds a document to the vector store, chunks it, and rebuilds vector index."""
+        if not isinstance(title, str) or not title.strip() or len(title) > 200:
+            raise ValueError('A document title up to 200 characters is required')
+        if not isinstance(content, str) or not content.strip() or len(content) > 50000:
+            raise ValueError('Document content must be between 1 and 50000 characters')
+        if not isinstance(category, str) or not category.strip() or len(category) > 80:
+            raise ValueError('Invalid document category')
         if not doc_id:
             doc_id = str(uuid.uuid4())[:8]
             
@@ -58,6 +67,8 @@ class VectorStore:
             tags = []
         elif isinstance(tags, str):
             tags = [t.strip() for t in tags.split(',')]
+        if not isinstance(tags, list) or len(tags) > 20 or not all(isinstance(tag, str) and len(tag) <= 50 for tag in tags):
+            raise ValueError('Invalid document tags')
 
         text_chunks = self._chunk_text(content)
         doc_entry = {
@@ -197,8 +208,10 @@ class VectorStore:
                 "tfidf_matrix": self.tfidf_matrix,
                 "is_fitted": self.is_fitted
             }
-            with open(self.storage_path, 'wb') as f:
+            temp_path = self.storage_path + '.tmp'
+            with open(temp_path, 'wb') as f:
                 pickle.dump(data, f)
+            os.replace(temp_path, self.storage_path)
             return True
         except Exception as e:
             print(f"[RAG VectorStore] Error saving index: {e}")
@@ -211,8 +224,14 @@ class VectorStore:
         try:
             with open(self.storage_path, 'rb') as f:
                 data = pickle.load(f)
-            self.documents = data.get("documents", {})
-            self.chunks = data.get("chunks", [])
+            if not isinstance(data, dict):
+                raise ValueError('Invalid vector-store format')
+            documents = data.get("documents", {})
+            chunks = data.get("chunks", [])
+            if not isinstance(documents, dict) or not isinstance(chunks, list):
+                raise ValueError('Invalid vector-store structure')
+            self.documents = documents
+            self.chunks = chunks
             self.vectorizer = data.get("vectorizer")
             self.tfidf_matrix = data.get("tfidf_matrix")
             self.is_fitted = data.get("is_fitted", False)
@@ -220,4 +239,9 @@ class VectorStore:
             return True
         except Exception as e:
             print(f"[RAG VectorStore] Error loading vector store: {e}")
+            self.documents = {}
+            self.chunks = []
+            self.vectorizer = None
+            self.tfidf_matrix = None
+            self.is_fitted = False
             return False

@@ -1,44 +1,96 @@
 {
   "manifest_version": 3,
   "name": "EchoTrace Fake Review Detector",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "AI-Powered fake product review detection system that scans e-commerce websites in real time.",
   "permissions": [
     "activeTab",
+    "tabs",
     "scripting",
-    "storage"
+    "storage",
+    "identity"
   ],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
     "*://*.amazon.com/*",
+    "*://*.amazon.co.uk/*",
+    "*://*.amazon.com.ph/*",
     "*://*.shopee.ph/*",
     "*://*.shopee.sg/*",
+    "*://*.shopee.com.my/*",
+    "*://*.shopee.co.id/*",
     "*://*.lazada.com.ph/*",
     "*://*.lazada.sg/*",
+    "*://*.lazada.com.my/*",
     "*://*.ebay.com/*",
     "*://*.aliexpress.com/*",
-    "*://*.walmart.com/*"
+    "*://*.walmart.com/*",
+    "*://*.tiktok.com/*",
+    "*://shop.tiktok.com/*"
   ],
   "background": {
     "service_worker": "scripts/background.js"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:8000/*",
+      "http://127.0.0.1:8000/*",
+      "http://localhost:8000/capsatone2/frontend/*",
+      "http://127.0.0.1:8000/capsatone2/frontend/*",
+      "http://localhost/capsatone2/frontend/*",
+      "http://127.0.0.1/capsatone2/frontend/*"
+    ]
   },
   "content_scripts": [
     {
       "matches": [
         "*://*.amazon.com/*",
+        "*://*.amazon.co.uk/*",
+        "*://*.amazon.com.ph/*",
         "*://*.shopee.ph/*",
         "*://*.shopee.sg/*",
+        "*://*.shopee.com.my/*",
+        "*://*.shopee.co.id/*",
         "*://*.lazada.com.ph/*",
         "*://*.lazada.sg/*",
+        "*://*.lazada.com.my/*",
         "*://*.ebay.com/*",
         "*://*.aliexpress.com/*",
-        "*://*.walmart.com/*"
+        "*://*.walmart.com/*",
+        "*://*.tiktok.com/*",
+        "*://shop.tiktok.com/*"
       ],
-      "js": ["scripts/content.js"]
+      "js": [
+        "scripts/review-utils.js",
+        "scripts/content.js"
+      ]
+    },
+    {
+      "matches": [
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*",
+        "http://localhost:8000/capsatone2/frontend/*",
+        "http://127.0.0.1:8000/capsatone2/frontend/*",
+        "http://localhost/capsatone2/frontend/*",
+        "http://127.0.0.1/capsatone2/frontend/*"
+      ],
+      "js": [
+        "scripts/dashboard-bridge.js"
+      ]
     }
   ],
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
   }
 }

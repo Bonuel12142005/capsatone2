@@ -1,0 +1,38 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+    
+    # Performance optimizations
+    <IfModule mod_headers.c>
+        # Disable caching for development (remove in production)
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+        
+        # Enable compression
+        <FilesMatch "\.(css|js|html|json)$">
+            Header set Vary "Accept-Encoding"
+        </FilesMatch>
+    </IfModule>
+    
+    # Enable compression
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE text/css text/javascript application/javascript application/json text/html text/xml
+    </IfModule>
+    
+    # Remove .php extension from URLs
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Route /api/* to backend API
+    RewriteRule ^api/(.*)$ backend/api/index.php?route=$1 [QSA,L]
+    
+    # Route static files from frontend
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    
+    # Everything else goes to frontend (SPA routing)
+    RewriteRule ^(.*)$ frontend/index.html [QSA,L]
+</IfModule>

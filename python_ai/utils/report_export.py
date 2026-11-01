@@ -2,10 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import io
 import base64
-try:
-    from weasyprint import HTML
-except Exception:
-    HTML = None
+import warnings
+
+# Suppress non-critical third-party warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def _dataframe_to_excel_bytes(df: pd.DataFrame) -> bytes:
     """Convert a DataFrame to an Excel file in memory.
@@ -78,10 +78,14 @@ def export_report(df: pd.DataFrame, title: str, fmt: str = 'pdf') -> bytes:
     """
     if fmt == 'pdf':
         html = generate_report_html(title, df)
-        if HTML is None:
-            raise ImportError('WeasyPrint is not installed; PDF export unavailable')
-        pdf_bytes = HTML(string=html).write_pdf()
-        return pdf_bytes
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from weasyprint import HTML
+                pdf_bytes = HTML(string=html).write_pdf()
+                return pdf_bytes
+        except Exception:
+            raise ImportError('WeasyPrint is not configured with external GTK libraries; PDF export unavailable on this host.')
     elif fmt == 'excel':
         return _dataframe_to_excel_with_chart(df)
     else:

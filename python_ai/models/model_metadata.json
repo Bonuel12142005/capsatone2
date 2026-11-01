@@ -1,0 +1,20 @@
+{
+  "train_date": "2026-11-01 10:59:14",
+  "pipeline_version": "v3_phase2",
+  "total_samples": 1458,
+  "train_samples": 876,
+  "validation_samples": 291,
+  "test_samples": 291,
+  "decision_threshold": 0.727161,
+  "accuracy": 0.9828,
+  "test_accuracy": 0.9828,
+  "validation_accuracy": 0.9588,
+  "evaluation_split": "held_out_test",
+  "dataset_scope": "synthetic_labeled_data",
+  "f1_score": 0.9828,
+  "roc_auc": 0.9993,
+  "cv_mean": 0.9767,
+  "cv_std": 0.0045,
+  "features": 2042,
+  "vocabulary_size": 2042
+}

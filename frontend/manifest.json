@@ -1,0 +1,16 @@
+{
+  "name": "EchoTrace - AI Fake Review Detector",
+  "short_name": "EchoTrace",
+  "description": "AI-Powered fake product review detection system that scans e-commerce websites.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    {
+      "src": "assets/logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}

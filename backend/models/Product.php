@@ -27,25 +27,11 @@ class Product {
     }
 
     public function getOrInsert($platform, $external_id, $title, $url, $image_url, $rating) {
-        $product = $this->find($platform, $external_id);
-        if ($product) {
-            // Update rating, image, and title in case they changed
-            $query = "UPDATE " . $this->table . " SET title = :title, image_url = :image_url, rating = :rating WHERE id = :id";
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':title', $title);
-            $stmt->bindParam(':image_url', $image_url);
-            $stmt->bindParam(':rating', $rating);
-            $stmt->bindParam(':id', $product['id']);
-            $stmt->execute();
-            
-            $product['title'] = $title;
-            $product['image_url'] = $image_url;
-            $product['rating'] = $rating;
-            return $product;
-        }
-
-        $query = "INSERT INTO " . $this->table . " (platform, external_id, title, url, image_url, rating) 
-                  VALUES (:platform, :external_id, :title, :url, :image_url, :rating)";
+        // The unique platform/external_id key makes this retry-safe even when
+        // two scans for the same product arrive at the same time.
+        $query = "INSERT INTO " . $this->table . " (platform, external_id, title, url, image_url, rating)
+                  VALUES (:platform, :external_id, :title, :url, :image_url, :rating)
+                  ON DUPLICATE KEY UPDATE title = VALUES(title), url = VALUES(url), image_url = VALUES(image_url), rating = VALUES(rating)";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(':platform', $platform);
         $stmt->bindParam(':external_id', $external_id);
@@ -54,18 +40,8 @@ class Product {
         $stmt->bindParam(':image_url', $image_url);
         $stmt->bindParam(':rating', $rating);
         
-        if ($stmt->execute()) {
-            return [
-                "id" => $this->conn->lastInsertId(),
-                "platform" => $platform,
-                "external_id" => $external_id,
-                "title" => $title,
-                "url" => $url,
-                "image_url" => $image_url,
-                "rating" => $rating
-            ];
-        }
-        return false;
+        if (!$stmt->execute()) return false;
+        return $this->find($platform, $external_id) ?: false;
     }
 
     public function getScannedProducts() {

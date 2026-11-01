@@ -1,0 +1,31 @@
+{
+  "trained_at": "2026-10-13T18:24:10.597260",
+  "total_samples": 1800,
+  "genuine_samples": 900,
+  "fake_samples": 900,
+  "train_size": 1440,
+  "test_size": 360,
+  "vocab_size": 2278,
+  "accuracy": 100.0,
+  "f1_score": 100.0,
+  "roc_auc": 1.0,
+  "cv_mean_f1": 100.0,
+  "cv_std_f1": 0.0,
+  "cv_scores": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0
+  ],
+  "confusion_matrix": {
+    "tn": 180,
+    "fp": 0,
+    "fn": 0,
+    "tp": 180
+  },
+  "genuine_precision": 100.0,
+  "genuine_recall": 100.0,
+  "fake_precision": 100.0,
+  "fake_recall": 100.0
+}
