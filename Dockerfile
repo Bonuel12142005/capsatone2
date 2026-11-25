@@ -10,7 +10,8 @@ WORKDIR /var/www/html
 
 COPY frontend/ ./frontend/
 COPY backend/ ./backend/
+COPY router.php ./router.php
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-8080} -t frontend backend/api/index.php"]
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-8080} -t frontend router.php"]
