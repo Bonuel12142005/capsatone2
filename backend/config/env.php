@@ -13,8 +13,9 @@ final class EchoTraceEnv {
     }
 
     public static function get(string $key, mixed $default = null): mixed {
-        if (array_key_exists($key, self::$env)) {
-            return self::$env[$key];
+        $val = getenv($key);
+        if ($val !== false && $val !== '') {
+            return $val;
         }
         if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
             return $_ENV[$key];
@@ -22,9 +23,8 @@ final class EchoTraceEnv {
         if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') {
             return $_SERVER[$key];
         }
-        $val = getenv($key);
-        if ($val !== false && $val !== '') {
-            return $val;
+        if (array_key_exists($key, self::$env)) {
+            return self::$env[$key];
         }
         return $default;
     }
