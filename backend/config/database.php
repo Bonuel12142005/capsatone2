@@ -23,21 +23,7 @@ class Database
         $this->conn = null;
 
         try {
-            // Step 1: Connect WITHOUT specifying a database, so we can create it if absent
-            $rootConn = new PDO(
-                "mysql:host={$this->host};charset=utf8mb4",
-                $this->username,
-                $this->password
-            );
-            $rootConn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-            // Step 2: Create database if it doesn't exist
-            $rootConn->exec(
-                "CREATE DATABASE IF NOT EXISTS `{$this->db_name}`
-                 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-            );
-
-            // Step 3: Connect to the target database
+            // Connect directly to the configured database (Railway-managed MySQL compatible)
             $this->conn = new PDO(
                 "mysql:host={$this->host};dbname={$this->db_name};charset=utf8mb4",
                 $this->username,
@@ -46,7 +32,7 @@ class Database
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
-            // Step 4: Run migrations (creates tables + seed data if they don't exist)
+            // Run migrations (creates tables + seed data if they don't exist)
             $this->runMigrations();
         } catch (PDOException $exception) {
             header('Content-Type: application/json');
