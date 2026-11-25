@@ -94,6 +94,17 @@ const EchoTraceAuth = (() => {
                 remember_me: rememberMe
             });
 
+            if (res.success && res.requires_verification) {
+                // Return verification challenge
+                return {
+                    success: false,
+                    requires_verification: true,
+                    email: res.email,
+                    email_masked: res.email_masked,
+                    message: res.message
+                };
+            }
+
             if (res.success && res.token) {
                 localStorage.removeItem('echotrace_token');
                 localStorage.removeItem('echotrace_user');

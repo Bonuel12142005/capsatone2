@@ -163,6 +163,20 @@ def load_training_metrics():
         return None
 
 
+def _normalize_accuracy_metric(val):
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if f < 0 or f > 100:
+            return None
+        if 0 < f <= 1.0:
+            return round(f * 100.0, 2)
+        return round(f, 2)
+    except (ValueError, TypeError):
+        return None
+
+
 def model_evaluation_summary():
     metrics = load_training_metrics()
     if not metrics:
@@ -173,8 +187,8 @@ def model_evaluation_summary():
         }
     return {
         'status': 'evaluated',
-        'test_accuracy': round(float(metrics.get('test_accuracy', metrics.get('accuracy'))), 2),
-        'validation_accuracy': metrics.get('validation_accuracy'),
+        'test_accuracy': _normalize_accuracy_metric(metrics.get('test_accuracy', metrics.get('accuracy'))),
+        'validation_accuracy': _normalize_accuracy_metric(metrics.get('validation_accuracy')),
         'model_version': metrics.get('pipeline_version'),
         'evaluated_at': metrics.get('evaluated_at', metrics.get('trained_at')),
         'evaluation_split': metrics.get('evaluation_split', 'held_out_test'),

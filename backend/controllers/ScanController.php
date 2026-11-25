@@ -187,11 +187,14 @@ class ScanController
         if (!is_array($reviews)) {
             return ['success' => false, 'status' => 422, 'error_code' => 'reviews_unavailable', 'error' => 'No review objects were supplied. Nothing was saved.'];
         }
+        if (count($reviews) > 100) {
+            return ['success' => false, 'status' => 422, 'error_code' => 'too_many_reviews', 'error' => 'A maximum of 100 reviews is allowed per scan.'];
+        }
 
         $analysisOptions = $this->normalizeAnalysisOptions($options);
         $normalized = [];
         $seen = [];
-        foreach (array_slice($reviews, 0, 100) as $idx => $review) {
+        foreach ($reviews as $idx => $review) {
             if (!is_array($review)) continue;
             $text = trim(preg_replace('/\s+/u', ' ', strip_tags((string)($review['text'] ?? ''))));
             if ($text === '' || mb_strlen($text) > 10000) continue;

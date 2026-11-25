@@ -4,6 +4,25 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, character 
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
 })[character]);
 
+const formatModelAccuracy = (accuracyVal, testSamples = null, status = null) => {
+    if (status === 'not_evaluated' || accuracyVal === null || accuracyVal === undefined || accuracyVal === '') {
+        return 'Not Available';
+    }
+    if (testSamples !== null && (Number(testSamples) <= 0 || !Number.isFinite(Number(testSamples)))) {
+        return 'Not Available';
+    }
+    const num = Number(accuracyVal);
+    if (!Number.isFinite(num) || num < 0 || num > 100) {
+        return 'Not Available';
+    }
+    // If passed as a decimal ratio > 0 and <= 1.0 (e.g. 0.9828, 0.75, 1), convert to percentage
+    const normalized = (num > 0 && num <= 1.0) ? (num * 100) : num;
+    if (normalized < 0 || normalized > 100) {
+        return 'Not Available';
+    }
+    return `${normalized.toFixed(2)}%`;
+};
+
 window.addEventListener('message', (event) => {
     const message = event.data;
     if (event.source !== window || event.origin !== window.location.origin
@@ -427,6 +446,7 @@ const initGoogleIdentityServices = async () => {
         // Render official button into containers if present
         const officialContainer = document.getElementById('google-official-btn-container');
         if (officialContainer) {
+            officialContainer.classList.remove('hidden');
             google.accounts.id.renderButton(officialContainer, {
                 theme: 'filled_black',
                 size: 'large',
@@ -434,9 +454,13 @@ const initGoogleIdentityServices = async () => {
                 shape: 'rectangular',
                 text: 'continue_with'
             });
+            // Hide custom fallback button once official button renders cleanly
+            const customBtn = document.getElementById('google-custom-btn');
+            if (customBtn) customBtn.classList.add('hidden');
         }
         const officialSignupContainer = document.getElementById('google-official-signup-btn-container');
         if (officialSignupContainer) {
+            officialSignupContainer.classList.remove('hidden');
             google.accounts.id.renderButton(officialSignupContainer, {
                 theme: 'filled_black',
                 size: 'large',
@@ -444,6 +468,8 @@ const initGoogleIdentityServices = async () => {
                 shape: 'rectangular',
                 text: 'continue_with'
             });
+            const customSignupBtn = document.getElementById('google-signup-custom-btn');
+            if (customSignupBtn) customSignupBtn.classList.add('hidden');
         }
 
         googleGsiInitialized = true;
@@ -485,9 +511,10 @@ const triggerGoogleSignIn = () => {
 };
 
 const executeGooglePrompt = () => {
-    const errorEl = document.getElementById('login-error');
-    const googleBtn = document.getElementById('google-custom-btn');
-    const googleText = document.getElementById('google-btn-text');
+    const isRegister = window.location.hash.includes('register');
+    const errorEl = document.getElementById(isRegister ? 'register-error' : 'login-error');
+    const googleBtn = document.getElementById(isRegister ? 'google-signup-custom-btn' : 'google-custom-btn');
+    const googleText = document.getElementById(isRegister ? 'google-signup-btn-text' : 'google-btn-text');
 
     if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
         if (errorEl) {
@@ -511,10 +538,21 @@ const executeGooglePrompt = () => {
     // Try prompt
     google.accounts.id.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            // Prompt was dismissed, closed, or suppressed by browser settings (e.g., third-party cookies or popups)
-            console.log('[EchoTrace] Google One Tap dismissed or suppressed:', notification.getNotDisplayedReason?.() || notification.getSkippedReason?.());
+            const notDisplayedReason = notification.getNotDisplayedReason?.();
+            const skippedReason = notification.getSkippedReason?.();
+            console.log('[EchoTrace] Google One Tap dismissed or suppressed:', notDisplayedReason || skippedReason);
+            
+            // Check for origin mismatch or configuration error
+            if (notDisplayedReason === 'origin_mismatch') {
+                if (errorEl) {
+                    const currentOrigin = window.location.origin;
+                    errorEl.textContent = `Google OAuth Origin Mismatch: '${currentOrigin}' must be added to 'Authorized JavaScript origins' in Google Cloud Console.`;
+                    errorEl.classList.remove('hidden');
+                }
+                return;
+            }
+
             // If official button rendered, trigger click on it as fallback
-            const isRegister = window.location.hash.includes('register');
             const targetContainer = isRegister ? '#google-official-signup-btn-container' : '#google-official-btn-container';
             const officialBtn = document.querySelector(targetContainer + ' div[role="button"]') || document.querySelector('#google-official-btn-container div[role="button"]');
             if (officialBtn) {
@@ -551,6 +589,12 @@ const handleGoogleCredentialResponse = async (response) => {
             if (window.location.hash !== '#dashboard') {
                 navigateTo('dashboard');
             }
+        } else if (res && res.requires_verification) {
+            sessionStorage.setItem('echotrace_pending_verification_email', res.email || '');
+            if (res.email_masked) {
+                sessionStorage.setItem('echotrace_pending_verification_masked', res.email_masked);
+            }
+            navigateTo('verify-email');
         } else {
             if (errorEl) {
                 errorEl.textContent = res.error || 'Google authentication failed.';
@@ -573,6 +617,154 @@ const handleGoogleCredentialResponse = async (response) => {
 const handleLogout = () => {
     EchoTraceAuth.logout();
     navigateTo('landing');
+};
+
+// --- EMAIL / LOGIN OTP VERIFICATION ACTIONS ---
+
+let resendOtpCooldownTimer = null;
+
+const initVerifyEmailView = () => {
+    const email = sessionStorage.getItem('echotrace_pending_verification_email') || '';
+    const masked = sessionStorage.getItem('echotrace_pending_verification_masked') || email;
+    const targetDisplay = document.getElementById('verify-email-target-display');
+    const input = document.getElementById('verify-otp-input');
+    const errorEl = document.getElementById('verify-email-error');
+    const successEl = document.getElementById('verify-email-success');
+
+    if (targetDisplay) {
+        targetDisplay.textContent = masked ? `Sent to: ${masked}` : '';
+    }
+    if (errorEl) errorEl.classList.add('hidden');
+    if (successEl) successEl.classList.add('hidden');
+    if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 100);
+    }
+};
+
+const submitEmailOtp = async (e) => {
+    e.preventDefault();
+    const email = sessionStorage.getItem('echotrace_pending_verification_email') || '';
+    const otp = document.getElementById('verify-otp-input')?.value.trim() || '';
+    const errorEl = document.getElementById('verify-email-error');
+    const successEl = document.getElementById('verify-email-success');
+    const submitBtn = document.getElementById('verify-otp-submit-btn');
+
+    if (!email) {
+        if (errorEl) {
+            errorEl.textContent = 'Session lost. Please sign in or register again.';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!otp || otp.length !== 6) {
+        if (errorEl) {
+            errorEl.textContent = 'Please enter the full 6-digit code.';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (errorEl) errorEl.classList.add('hidden');
+    if (successEl) successEl.classList.add('hidden');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verifying…';
+    }
+
+    try {
+        const res = await EchoTraceAuth.verifyEmail(email, otp);
+        if (res && res.success) {
+            sessionStorage.removeItem('echotrace_pending_verification_email');
+            sessionStorage.removeItem('echotrace_pending_verification_masked');
+            if (successEl) {
+                successEl.textContent = res.message || 'Verification successful! Logging in…';
+                successEl.classList.remove('hidden');
+            }
+            setTimeout(() => {
+                navigateTo('dashboard');
+            }, 800);
+        } else {
+            if (errorEl) {
+                errorEl.textContent = res?.error || 'Verification failed. Please check your code.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = err?.message || 'Server connection error during verification.';
+            errorEl.classList.remove('hidden');
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Verify & Continue';
+        }
+    }
+};
+
+const resendEmailOtp = async () => {
+    const email = sessionStorage.getItem('echotrace_pending_verification_email') || '';
+    const errorEl = document.getElementById('verify-email-error');
+    const successEl = document.getElementById('verify-email-success');
+    const resendBtn = document.getElementById('verify-resend-btn');
+
+    if (!email) {
+        if (errorEl) {
+            errorEl.textContent = 'Session lost. Please return to sign in.';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (resendBtn) resendBtn.disabled = true;
+
+    try {
+        const res = await EchoTraceAPI.post('auth/resend-otp', { email });
+        if (res && res.success) {
+            if (successEl) {
+                successEl.textContent = res.message || 'A fresh code was sent to your email.';
+                successEl.classList.remove('hidden');
+            }
+            if (errorEl) errorEl.classList.add('hidden');
+            startResendOtpCountdown(60);
+        } else {
+            if (errorEl) {
+                errorEl.textContent = res?.error || 'Unable to resend verification code.';
+                errorEl.classList.remove('hidden');
+            }
+            if (resendBtn) resendBtn.disabled = false;
+        }
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = err?.message || 'Failed to request code.';
+            errorEl.classList.remove('hidden');
+        }
+        if (resendBtn) resendBtn.disabled = false;
+    }
+};
+
+const startResendOtpCountdown = (seconds) => {
+    const resendBtn = document.getElementById('verify-resend-btn');
+    if (!resendBtn) return;
+    if (resendOtpCooldownTimer) clearInterval(resendOtpCooldownTimer);
+
+    let count = seconds;
+    resendBtn.disabled = true;
+    resendBtn.textContent = `Resend in ${count}s`;
+
+    resendOtpCooldownTimer = setInterval(() => {
+        count--;
+        if (count <= 0) {
+            clearInterval(resendOtpCooldownTimer);
+            resendOtpCooldownTimer = null;
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend Code';
+        } else {
+            resendBtn.textContent = `Resend in ${count}s`;
+        }
+    }, 1000);
 };
 
 // --- PROFILE & SETTINGS ---
@@ -889,16 +1081,19 @@ const loadDashboardData = async () => {
             const ev = evalRes?.model_evaluation;
             const el = document.getElementById('stat-accuracy');
             if (!el) return;
-            if (ev?.status === 'evaluated' && ev?.test_accuracy != null) {
-                el.textContent = `${parseFloat(ev.test_accuracy).toFixed(2)}%`;
-                el.title = `Test accuracy on ${ev.test_size ?? '?'} held-out samples (${ev.dataset_scope ?? 'labeled data'})`;
+            const formatted = formatModelAccuracy(ev?.test_accuracy, ev?.test_samples ?? ev?.test_size, ev?.status);
+            el.textContent = formatted;
+            if (formatted !== 'Not Available') {
+                el.title = `Test accuracy on ${ev?.test_size ?? ev?.test_samples ?? '?'} held-out samples (${ev?.dataset_scope ?? 'labeled data'})`;
             } else {
-                el.textContent = 'N/A';
                 el.title = 'No valid held-out model evaluation is available yet.';
             }
         }).catch(() => {
             const el = document.getElementById('stat-accuracy');
-            if (el) el.textContent = 'N/A';
+            if (el) {
+                el.textContent = 'Not Available';
+                el.title = 'No valid held-out model evaluation is available yet.';
+            }
         });
 
         // 4. Render Dashboard Charts safely in isolated try/catch
@@ -1257,23 +1452,41 @@ const addScreenshotFiles = (files) => {
 };
 
 const renderScreenshotPreviews = () => {
+    const dropzone = document.getElementById('screenshot-dropzone');
+    const emptyState = document.getElementById('screenshot-empty-state');
     const container = document.getElementById('screenshot-preview-container');
     const grid = document.getElementById('screenshot-thumbnails-grid');
     const label = document.getElementById('screenshot-count-label');
+    const addMoreBtn = document.getElementById('screenshot-add-more-btn');
     if (!container || !grid) return;
 
     screenshotPreviewUrls.forEach(url => URL.revokeObjectURL(url));
     screenshotPreviewUrls = [];
 
     if (!screenshotFiles.length) {
+        if (dropzone) dropzone.classList.remove('has-files');
+        if (emptyState) emptyState.classList.remove('hidden');
         container.classList.add('hidden');
         grid.innerHTML = '';
         return;
     }
 
+    if (dropzone) dropzone.classList.add('has-files');
+    if (emptyState) emptyState.classList.add('hidden');
     container.classList.remove('hidden');
+
     if (label) {
         label.textContent = `${screenshotFiles.length} of 5 screenshot${screenshotFiles.length === 1 ? '' : 's'} selected`;
+    }
+
+    if (addMoreBtn) {
+        if (screenshotFiles.length >= 5) {
+            addMoreBtn.classList.add('opacity-50', 'pointer-events-none');
+            addMoreBtn.setAttribute('title', 'Maximum 5 screenshots reached');
+        } else {
+            addMoreBtn.classList.remove('opacity-50', 'pointer-events-none');
+            addMoreBtn.removeAttribute('title');
+        }
     }
 
     grid.innerHTML = '';
@@ -1282,22 +1495,23 @@ const renderScreenshotPreviews = () => {
         screenshotPreviewUrls.push(url);
         const safeFileName = escapeHtml(file.name);
         const card = document.createElement('div');
-        card.className = 'relative group rounded-xl overflow-hidden border border-[#1E3A5F] bg-[#030712] aspect-square flex flex-col items-center justify-center p-1.5 shadow-md';
+        card.className = 'relative group rounded-xl overflow-hidden border border-[#1E3A5F] bg-[#030712] aspect-square flex flex-col items-center justify-center p-1.5 shadow-md hover:border-cyan-400/50 transition-all';
 
         const sizeFormatted = file.size > 1024 * 1024
             ? (file.size / (1024 * 1024)).toFixed(1) + ' MB'
             : Math.round(file.size / 1024) + ' KB';
 
         card.innerHTML = `
-            <img src="${url}" alt="${safeFileName}" class="w-full h-full object-cover rounded-lg group-hover:opacity-80 transition-opacity">
+            <img src="${url}" alt="${safeFileName}" class="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform duration-200">
             <button type="button" 
-                    onclick="removeScreenshotFile(${index})" 
-                    aria-label="Remove image"
-                    class="absolute top-1 right-1 bg-rose-500/90 hover:bg-rose-600 text-white p-1 rounded-full shadow-lg transition-transform hover:scale-110">
-                <i data-lucide="x" class="w-3 h-3"></i>
+                    onclick="event.stopPropagation(); removeScreenshotFile(${index});" 
+                    aria-label="Remove image ${safeFileName}"
+                    title="Remove ${safeFileName}"
+                    class="absolute top-1.5 right-1.5 bg-rose-500/90 hover:bg-rose-600 text-white p-1 rounded-full shadow-lg transition-transform hover:scale-110 z-10">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
-            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-1.5 text-[9px] text-gray-300 truncate text-center">
-                <span class="truncate block">${safeFileName}</span>
+            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-1.5 text-[9px] text-gray-300 truncate text-center pointer-events-none">
+                <span class="truncate block font-medium">${safeFileName}</span>
                 <span class="text-cyan-400 font-mono text-[8px]">${sizeFormatted}</span>
             </div>
         `;
@@ -3818,7 +4032,9 @@ const switchAdminTab = (tabName) => {
     }
 
     // Load tab-specific data
-    // (maintenance tab removed)
+    if (tabName === 'reports') {
+        loadAdminScanReportsModule();
+    }
 
     activeAdminTab = tabName;
 };
@@ -3844,16 +4060,17 @@ const loadAdminDashboard = async () => {
 const renderAdminModelEvaluation = (evaluation) => {
     const accuracyEl = document.getElementById('admin-stat-ai-accuracy');
     const performanceEl = document.getElementById('admin-model-performance');
-    const accuracy = Number(evaluation?.test_accuracy);
-    const isEvaluated = evaluation?.status === 'evaluated'
-        && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 100;
+    const rawAccuracy = evaluation?.test_accuracy;
+    const testSamples = evaluation?.test_samples ?? evaluation?.test_size ?? null;
+    const formatted = formatModelAccuracy(rawAccuracy, testSamples, evaluation?.status);
+    const isEvaluated = formatted !== 'Not Available';
 
-    if (accuracyEl) accuracyEl.textContent = isEvaluated ? `${accuracy.toFixed(2)}%` : 'Not evaluated';
+    if (accuracyEl) accuracyEl.textContent = formatted;
     if (!performanceEl) return;
 
     performanceEl.replaceChildren();
     if (!isEvaluated) {
-        performanceEl.textContent = 'Not evaluated. No valid held-out test metrics are saved for the current model.';
+        performanceEl.textContent = 'Not Available. No valid held-out test metrics are saved for the current model.';
         return;
     }
 
@@ -3864,13 +4081,13 @@ const renderAdminModelEvaluation = (evaluation) => {
         ? 'Labeled synthetic held-out data' : 'Labeled held-out data';
     const validation = evaluation.validation_accuracy == null
         ? `${evaluation.validation_size ?? 'Unknown'} samples; used for threshold selection (accuracy not stored for this run)`
-        : `${Number(evaluation.validation_accuracy).toFixed(2)}% on ${evaluation.validation_size ?? 'unknown'} tuning samples`;
+        : `${formatModelAccuracy(evaluation.validation_accuracy, evaluation.validation_size)} on ${evaluation.validation_size ?? 'unknown'} tuning samples`;
 
     const rows = [
-        ['Held-out test accuracy', `${accuracy.toFixed(2)}%`],
+        ['Held-out test accuracy', formatted],
         ['Model version', evaluation.model_version || 'Unknown'],
         ['Evaluated', evaluatedLabel],
-        ['Test set', `${evaluation.test_size ?? 'Unknown'} samples · ${scope}`],
+        ['Test set', `${evaluation.test_size ?? evaluation.test_samples ?? 'Unknown'} samples · ${scope}`],
         ['Validation', validation],
         ['Split protection', evaluation.split_strategy === 'group_aware' ? 'Group-aware; duplicate families kept together' : (evaluation.split_strategy || 'Unknown')]
     ];
@@ -3915,11 +4132,560 @@ const loadAdminAnalytics = async () => {
     } catch (error) { if (status) status.textContent = error.message || 'Unable to load analytics.'; }
 };
 
+const loadAdminScanAnalytics = async () => {
+    const status = document.getElementById('admin-analytics-status');
+    const period = document.getElementById('admin-analytics-range')?.value || '30';
+    
+    if (status) status.textContent = 'Loading analytics…';
+    
+    try {
+        // Call the new admin/scan-analytics endpoint
+        const data = await EchoTraceAPI.get(`admin/scan-analytics&period=${encodeURIComponent(period)}`);
+        
+        if (!data.success) throw new Error(data.error || 'Analytics could not be loaded.');
+        
+        const summary = data.summary || {};
+        const setCard = (id, value, defaultValue = '—') => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value !== null && value !== undefined ? value : defaultValue;
+        };
+        
+        // Update Analytics Summary Cards
+        setCard('card-total-scans', summary.total_scans || 0);
+        setCard('card-total-reviews', summary.total_reviews || 0);
+        setCard('card-total-genuine', summary.total_genuine || 0);
+        setCard('card-total-suspicious', summary.total_suspicious || 0);
+        setCard('card-total-uncertain', summary.total_uncertain || 0);
+        setCard('card-avg-trust', (summary.avg_trust_score || 0) + '%');
+        setCard('card-successful-scans', summary.successful_scans || 0);
+        setCard('card-failed-scans', summary.failed_scans || 0);
+        
+        if (status) status.textContent = `Period: ${period} days · Scans: ${summary.total_scans || 0} · Reviews: ${summary.total_reviews || 0}`;
+        
+        // Render Charts using Chart.js
+        const destroyChart = (key) => {
+            if (adminAnalyticsCharts[key]) {
+                adminAnalyticsCharts[key].destroy();
+                delete adminAnalyticsCharts[key];
+            }
+        };
+        
+        const renderChart = (key, canvasId, config) => {
+            destroyChart(key);
+            const canvas = document.getElementById(canvasId);
+            if (canvas && window.Chart) {
+                adminAnalyticsCharts[key] = new Chart(canvas, config);
+            }
+        };
+        
+        const darkScales = {
+            x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.05)' } },
+            y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        };
+        
+        // Chart 1: Scan Activity Trend (Line Chart)
+        const activityTrend = data.activity_trend || [];
+        renderChart('scan-activity', 'chart-scan-activity', {
+            type: 'line',
+            data: {
+                labels: activityTrend.map(x => new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                datasets: [
+                    {
+                        label: 'Total Scans',
+                        data: activityTrend.map(x => Number(x.scans || 0)),
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Avg Trust Score',
+                        data: activityTrend.map(x => (Number(x.avg_trust || 0) / 100 * 10).toFixed(1)),
+                        borderColor: '#34d399',
+                        backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    ...darkScales,
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#cbd5e1' } }
+                }
+            }
+        });
+        
+        // Chart 2: AI Classification Distribution (Doughnut Chart)
+        renderChart('classification', 'chart-classification', {
+            type: 'doughnut',
+            data: {
+                labels: ['Genuine', 'Suspicious', 'Uncertain'],
+                datasets: [{
+                    data: [
+                        summary.total_genuine || 0,
+                        summary.total_suspicious || 0,
+                        summary.total_uncertain || 0
+                    ],
+                    backgroundColor: ['#34d399', '#fb7185', '#fbbf24'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#cbd5e1' } }
+                },
+                cutout: '65%'
+            }
+        });
+        
+        // Chart 3: Marketplace Distribution (Bar Chart)
+        const platformDist = data.platform_distribution || [];
+        renderChart('marketplace', 'chart-marketplace', {
+            type: 'bar',
+            data: {
+                labels: platformDist.map(x => (x.platform || 'unknown').toUpperCase()),
+                datasets: [{
+                    label: 'Scan Count',
+                    data: platformDist.map(x => Number(x.count || 0)),
+                    backgroundColor: '#38bdf8',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: darkScales,
+                plugins: { legend: { display: false } }
+            }
+        });
+        
+        // Chart 4: Trust Score Trend (Line Chart)
+        renderChart('trust-score', 'chart-trust-score', {
+            type: 'line',
+            data: {
+                labels: activityTrend.map(x => new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                datasets: [{
+                    label: 'Trust Score (%)',
+                    data: activityTrend.map(x => Number(x.avg_trust || 0)),
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#8b5cf6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    ...darkScales,
+                    y: { beginAtZero: true, min: 0, max: 100 }
+                },
+                plugins: {
+                    legend: { labels: { color: '#cbd5e1' } }
+                }
+            }
+        });
+        
+    } catch (error) {
+        if (status) status.textContent = `Error: ${error.message || 'Unable to load analytics.'}`;
+        console.error('[loadAdminScanAnalytics]', error);
+    }
+};
+
+const loadAdminScanReportsModule = async () => {
+    const period = document.getElementById('admin-reports-period')?.value || '30';
+    
+    try {
+        // Fetch analytics data for Reports tab
+        const data = await EchoTraceAPI.get(`admin/scan-analytics&period=${encodeURIComponent(period)}`);
+        
+        if (!data.success) throw new Error(data.error || 'Reports could not be loaded.');
+        
+        const summary = data.summary || {};
+        const setCard = (id, value, defaultValue = '—') => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value !== null && value !== undefined ? value : defaultValue;
+        };
+        
+        // Update Analytics Summary Cards in Reports tab
+        setCard('asr-stat-scans', summary.total_scans || 0);
+        setCard('asr-stat-reviews', summary.total_reviews || 0);
+        setCard('asr-stat-genuine', summary.total_genuine || 0);
+        setCard('asr-stat-suspicious', summary.total_suspicious || 0);
+        setCard('asr-stat-uncertain', summary.total_uncertain || 0);
+        setCard('asr-stat-trust', (summary.avg_trust_score || 0) + '%');
+        setCard('asr-stat-success', summary.successful_scans || 0);
+        setCard('asr-stat-failed', summary.failed_scans || 0);
+        
+        // Render Charts using Chart.js for Reports tab
+        const destroyChart = (key) => {
+            if (adminAnalyticsCharts[key]) {
+                adminAnalyticsCharts[key].destroy();
+                delete adminAnalyticsCharts[key];
+            }
+        };
+        
+        const renderChart = (key, canvasId, config) => {
+            destroyChart(key);
+            const canvas = document.getElementById(canvasId);
+            if (canvas && window.Chart) {
+                adminAnalyticsCharts[key] = new Chart(canvas, config);
+            }
+        };
+        
+        const darkScales = {
+            x: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.05)' } },
+            y: { beginAtZero: true, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        };
+        
+        // Chart 1: Scan Activity Trend (Line Chart)
+        const activityTrend = data.activity_trend || [];
+        renderChart('admin-scan-activity', 'chart-admin-scan-activity', {
+            type: 'line',
+            data: {
+                labels: activityTrend.map(x => new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                datasets: [
+                    {
+                        label: 'Total Scans',
+                        data: activityTrend.map(x => Number(x.scans || 0)),
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Avg Trust Score',
+                        data: activityTrend.map(x => (Number(x.avg_trust || 0) / 100 * 10).toFixed(1)),
+                        borderColor: '#34d399',
+                        backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    ...darkScales,
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: true,
+                        ticks: { color: '#9ca3af' },
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#cbd5e1' } }
+                }
+            }
+        });
+        
+        // Chart 2: AI Classification Distribution (Doughnut Chart)
+        renderChart('admin-classification-dist', 'chart-admin-classification-dist', {
+            type: 'doughnut',
+            data: {
+                labels: ['Genuine', 'Suspicious', 'Uncertain'],
+                datasets: [{
+                    data: [
+                        summary.total_genuine || 0,
+                        summary.total_suspicious || 0,
+                        summary.total_uncertain || 0
+                    ],
+                    backgroundColor: ['#34d399', '#fb7185', '#fbbf24'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#cbd5e1' } }
+                },
+                cutout: '65%'
+            }
+        });
+        
+        // Chart 3: Marketplace Distribution (Bar Chart)
+        const platformDist = data.platform_distribution || [];
+        renderChart('admin-marketplace-dist', 'chart-admin-marketplace-dist', {
+            type: 'bar',
+            data: {
+                labels: platformDist.map(x => (x.platform || 'unknown').toUpperCase()),
+                datasets: [{
+                    label: 'Scan Count',
+                    data: platformDist.map(x => Number(x.count || 0)),
+                    backgroundColor: '#38bdf8',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: darkScales,
+                plugins: { legend: { display: false } }
+            }
+        });
+        
+        // Chart 4: Trust Score Trend (Line Chart)
+        renderChart('admin-trust-trend', 'chart-admin-trust-trend', {
+            type: 'line',
+            data: {
+                labels: activityTrend.map(x => new Date(x.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+                datasets: [{
+                    label: 'Trust Score (%)',
+                    data: activityTrend.map(x => Number(x.avg_trust || 0)),
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#8b5cf6'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    ...darkScales,
+                    y: { beginAtZero: true, min: 0, max: 100 }
+                },
+                plugins: {
+                    legend: { labels: { color: '#cbd5e1' } }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('[loadAdminScanReportsModule]', error);
+    }
+
+    // Always load the table (even if analytics failed)
+    loadAdminScanReportsTable(1);
+};
+
+// ─── Admin Scan Reports Table ────────────────────────────────────────────────
+
+let _asrReqSeq = 0;
+let _asrDebounceTimer = null;
+
+const adminScanState = {
+    page: 1,
+    limit: 20,
+    sort: 'scan_date',
+    order: 'desc',
+    search: '',
+    platform: 'all',
+    source: 'all',
+    risk_level: 'all',
+    totalPages: 1
+};
+
+function _asrReadFilters() {
+    adminScanState.search    = document.getElementById('asr-filter-search')?.value.trim()   || '';
+    adminScanState.platform  = document.getElementById('asr-filter-platform')?.value        || 'all';
+    adminScanState.source    = document.getElementById('asr-filter-source')?.value          || 'all';
+    adminScanState.risk_level = document.getElementById('asr-filter-risk')?.value           || 'all';
+}
+
+function debounceAdminScanSearch() {
+    clearTimeout(_asrDebounceTimer);
+    _asrDebounceTimer = setTimeout(() => loadAdminScanReportsTable(1), 400);
+}
+
+async function loadAdminScanReportsTable(page = 1) {
+    _asrReadFilters();
+    adminScanState.page = page;
+
+    const tbody    = document.getElementById('asr-table-body');
+    const countEl  = document.getElementById('asr-table-count');
+    const infoEl   = document.getElementById('asr-pagination-info');
+    const ctrlsEl  = document.getElementById('asr-pagination-controls');
+
+    if (!tbody) return;
+
+    // Loading state
+    tbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center text-gray-400">
+        <svg class="animate-spin w-5 h-5 mx-auto mb-2 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>Loading scan reports…</td></tr>`;
+
+    const seq = ++_asrReqSeq;
+
+    // Build query string — backend uses &param=value after route
+    const qs = [
+        `page=${page}`,
+        `limit=${adminScanState.limit}`,
+        `sort=${encodeURIComponent(adminScanState.sort)}`,
+        `order=${encodeURIComponent(adminScanState.order)}`,
+    ];
+    if (adminScanState.search)                        qs.push(`search=${encodeURIComponent(adminScanState.search)}`);
+    if (adminScanState.platform  !== 'all')           qs.push(`platform=${encodeURIComponent(adminScanState.platform)}`);
+    if (adminScanState.source    !== 'all')           qs.push(`source=${encodeURIComponent(adminScanState.source)}`);
+    if (adminScanState.risk_level !== 'all')          qs.push(`risk_level=${encodeURIComponent(adminScanState.risk_level)}`);
+
+    // Period filter from the period dropdown (if present)
+    const period = document.getElementById('admin-reports-period')?.value;
+    if (period && period !== 'all') qs.push(`period=${encodeURIComponent(period)}`);
+
+    try {
+        const resp = await EchoTraceAPI.get(`admin/scan-reports&${qs.join('&')}`);
+        if (seq !== _asrReqSeq) return; // stale response
+
+        if (!resp || !resp.success) throw new Error(resp?.error || 'Request failed');
+
+        const reports    = resp.reports    || [];
+        const pagination = resp.pagination || { page: 1, total_pages: 1, total_records: 0, limit: 20 };
+        adminScanState.totalPages = pagination.total_pages || 1;
+
+        // Update count label
+        if (countEl) countEl.textContent = `${pagination.total_records} record${pagination.total_records !== 1 ? 's' : ''}`;
+        if (infoEl)  infoEl.textContent  = `Showing page ${pagination.page} of ${pagination.total_pages} (${pagination.total_records} total)`;
+
+        // Render rows
+        if (reports.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center text-gray-500">No scan reports match the current filters.</td></tr>`;
+        } else {
+            tbody.innerHTML = '';
+            reports.forEach(r => {
+                const rawTrust = r.trust_score;
+                const trustVal = (rawTrust !== null && rawTrust !== '' && rawTrust !== undefined)
+                    ? parseFloat(rawTrust)
+                    : null;
+                const trustDisplay = trustVal !== null && !isNaN(trustVal)
+                    ? `${trustVal.toFixed(1)}%`
+                    : '<span class="text-gray-500 italic text-[10px]">Insufficient Evidence</span>';
+
+                const riskClass = (r.risk_level || '').toLowerCase().includes('low')
+                    ? 'bg-emerald-500/10 text-emerald-400'
+                    : (r.risk_level || '').toLowerCase().includes('medium')
+                        ? 'bg-amber-500/10 text-amber-400'
+                        : 'bg-rose-500/10 text-rose-400';
+
+                const platformBadge = (() => {
+                    const p = (r.platform || '').toLowerCase();
+                    const cls = p === 'amazon'    ? 'bg-amber-500/10 text-amber-400'
+                              : p === 'shopee'    ? 'bg-orange-500/10 text-orange-400'
+                              : p === 'lazada'    ? 'bg-purple-500/10 text-purple-400'
+                              : p === 'tiktokshop'? 'bg-pink-500/10 text-pink-400'
+                              :                    'bg-sky-500/10 text-sky-400';
+                    return `<span class="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${cls}">${escapeHtml(r.platform || '—')}</span>`;
+                })();
+
+                const scanId = Number(r.id);
+                const dateStr = r.scan_date ? new Date(r.scan_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-glassBorder hover:bg-white/5 transition-colors';
+                tr.innerHTML = `
+                    <td class="p-3 text-xs text-gray-400 font-mono">#${escapeHtml(String(r.id))}</td>
+                    <td class="p-3 text-xs font-semibold text-white">${escapeHtml(r.scanned_by || '—')}</td>
+                    <td class="p-3 text-xs max-w-[180px]"><span class="block truncate" title="${escapeHtml(r.product_title || '')}">${escapeHtml(r.product_title || '—')}</span></td>
+                    <td class="p-3">${platformBadge}</td>
+                    <td class="p-3 text-xs text-gray-400">${escapeHtml(r.review_source || '—')}</td>
+                    <td class="p-3 text-xs text-center font-semibold text-white">${escapeHtml(String(r.total_reviews ?? 0))}</td>
+                    <td class="p-3 text-xs text-center text-emerald-400 font-semibold">${escapeHtml(String(r.genuine_count ?? 0))}</td>
+                    <td class="p-3 text-xs text-center text-rose-400 font-semibold">${escapeHtml(String(r.fake_count ?? 0))}</td>
+                    <td class="p-3 text-xs text-center text-amber-400 font-semibold">${escapeHtml(String(r.uncertain_count ?? 0))}</td>
+                    <td class="p-3 text-xs text-center font-bold text-cyan-300">${trustDisplay}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-[9px] font-bold ${riskClass}">${escapeHtml(r.risk_level || '—')}</span></td>
+                    <td class="p-3 text-xs text-gray-400 whitespace-nowrap">${dateStr}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="openDashboardFullReport(${scanId})" class="px-2.5 py-1 text-[10px] font-semibold bg-sky-600/20 hover:bg-sky-600/40 text-sky-300 border border-sky-500/30 rounded-lg transition-all">View</button>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Render pagination controls
+        if (ctrlsEl) {
+            ctrlsEl.innerHTML = '';
+            const totalPages = pagination.total_pages || 1;
+            const curPage    = pagination.page || 1;
+
+            const makeBtn = (label, targetPage, disabled = false, active = false) => {
+                const btn = document.createElement('button');
+                btn.textContent = label;
+                btn.disabled = disabled;
+                btn.className = [
+                    'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border',
+                    active
+                        ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+                        : disabled
+                            ? 'border-glassBorder text-gray-600 cursor-not-allowed'
+                            : 'border-glassBorder text-gray-300 hover:bg-white/5 hover:text-white'
+                ].join(' ');
+                if (!disabled) btn.onclick = () => loadAdminScanReportsTable(targetPage);
+                return btn;
+            };
+
+            ctrlsEl.appendChild(makeBtn('‹ Prev', curPage - 1, curPage <= 1));
+
+            // Show at most 5 page number buttons
+            const start = Math.max(1, curPage - 2);
+            const end   = Math.min(totalPages, start + 4);
+            for (let p = start; p <= end; p++) {
+                ctrlsEl.appendChild(makeBtn(String(p), p, false, p === curPage));
+            }
+
+            ctrlsEl.appendChild(makeBtn('Next ›', curPage + 1, curPage >= totalPages));
+        }
+
+    } catch (e) {
+        if (seq !== _asrReqSeq) return;
+        tbody.innerHTML = `<tr><td colspan="13" class="p-6 text-center text-rose-400">
+            ⚠ ${escapeHtml(e.message)}
+            <button onclick="loadAdminScanReportsTable(${adminScanState.page})" class="ml-3 underline text-sky-400 hover:text-sky-300">Retry</button>
+        </td></tr>`;
+        if (countEl) countEl.textContent = '';
+        if (infoEl)  infoEl.textContent  = '';
+        if (ctrlsEl) ctrlsEl.innerHTML   = '';
+        console.error('[loadAdminScanReportsTable]', e);
+    }
+}
+
+function sortAdminScanReports(col) {
+    const allowed = ['id', 'scan_date', 'trust_score', 'reviews'];
+    if (!allowed.includes(col)) return; // ignore unsupported columns silently
+
+    if (adminScanState.sort === col) {
+        // Toggle direction
+        adminScanState.order = adminScanState.order === 'asc' ? 'desc' : 'asc';
+    } else {
+        adminScanState.sort  = col;
+        adminScanState.order = 'desc'; // default to desc for new column
+    }
+    loadAdminScanReportsTable(1);
+}
+
 const loadAdminData = async () => {
     try {
-        // Load Dashboard Stats first
-        await loadAdminDashboard();
-        await loadAdminAnalytics();
+        // Load New Phase 2: Scan Analytics
+        await loadAdminScanAnalytics();
 
         // 1. Fetch Scan History (Recent Audits)
         const historyRes = await EchoTraceAPI.get('scan/history');
@@ -4021,11 +4787,15 @@ const populateAdminHistory = (scans) => {
     lucide.createIcons();
 };
 
+let adminCachedUsers = [];
+
 const populateAdminUsers = (users) => {
+    adminCachedUsers = Array.isArray(users) ? users : [];
     const tbody = document.getElementById('admin-users-table-body');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
-    users.forEach(u => {
+    adminCachedUsers.forEach(u => {
         const userId = Number(u.id);
         if (!Number.isInteger(userId) || userId < 1) return;
         const userStatus = u.status === 'active' ? 'active' : 'blocked';
@@ -4049,7 +4819,7 @@ const populateAdminUsers = (users) => {
                 <button onclick="toggleUserRole(${userId}, '${userRole}')" class="text-xs text-sky-400 hover:underline">
                     Make ${userRole === 'admin' ? 'User' : 'Admin'}
                 </button>
-                <button onclick="deleteUserAccount(${userId})" class="text-xs text-rose-500 font-bold hover:underline">
+                <button onclick="openDeleteUserModal(${userId})" class="text-xs text-rose-500 font-bold hover:underline">
                     Delete
                 </button>
             </td>
@@ -4082,45 +4852,226 @@ const toggleUserRole = async (id, currentRole) => {
     }
 };
 
-const deleteUserAccount = async (id) => {
-    if (!confirm("Are you sure you want to permanently delete this user?")) return;
+const exportAdminScanReportsCSV = async () => {
     try {
-        const res = await EchoTraceAPI.delete(`admin/users/delete&id=${id}`);
-        if (res.success) {
-            loadAdminData();
-        }
+        const period = document.getElementById('admin-reports-period')?.value || '30';
+        const response = await fetch(`backend/api/index.php?endpoint=admin/scan-reports-csv&period=${encodeURIComponent(period)}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('echotrace_token') || ''}`
+            }
+        });
+        
+        if (!response.ok) throw new Error('Export failed: ' + response.statusText);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'echotrace_scan_reports_' + new Date().toISOString().split('T')[0] + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     } catch (e) {
-        alert(e.message);
+        alert('Failed to export CSV: ' + (e.message || 'Unknown error'));
+        console.error('[exportAdminScanReportsCSV]', e);
     }
 };
 
+const exportAdminScanReportsPDF = async () => {
+    try {
+        const period = document.getElementById('admin-reports-period')?.value || '30';
+        const response = await fetch(`backend/api/index.php?endpoint=admin/scan-reports-pdf&period=${encodeURIComponent(period)}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('echotrace_token') || ''}`
+            }
+        });
+        
+        if (!response.ok) throw new Error('Export failed: ' + response.statusText);
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'echotrace_scan_reports_' + new Date().toISOString().split('T')[0] + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    } catch (e) {
+        alert('Failed to export PDF: ' + (e.message || 'Unknown error'));
+        console.error('[exportAdminScanReportsPDF]', e);
+    }
+};
+
+let userDeletionInProgress = false;
+let selectedUserForDeletion = null;
+let lastActiveDeleteTrigger = null;
+
+const openDeleteUserModal = (id, username = null, email = null) => {
+    if (userDeletionInProgress) return;
+    const userId = Number(id);
+    if (!Number.isInteger(userId) || userId <= 0) return;
+
+    lastActiveDeleteTrigger = document.activeElement;
+
+    const targetUser = adminCachedUsers.find(u => Number(u.id) === userId);
+    const uname = username || targetUser?.username || `User #${userId}`;
+    const uemail = email || targetUser?.email || 'N/A';
+
+    selectedUserForDeletion = { id: userId, username: uname, email: uemail };
+
+    const modal = document.getElementById('delete-user-modal');
+    const usernameEl = document.getElementById('delete-user-modal-username');
+    const emailEl = document.getElementById('delete-user-modal-email');
+    const errorEl = document.getElementById('delete-user-modal-error');
+    const errorTextEl = document.getElementById('delete-user-modal-error-text');
+    const confirmBtn = document.getElementById('delete-user-confirm-btn');
+    const cancelBtn = document.getElementById('delete-user-cancel-btn');
+    const closeBtn = document.getElementById('delete-user-close-btn');
+    const btnSpinner = document.getElementById('delete-user-btn-spinner');
+    const btnText = document.getElementById('delete-user-btn-text');
+
+    if (usernameEl) usernameEl.textContent = uname;
+    if (emailEl) emailEl.textContent = uemail;
+    if (errorEl) errorEl.classList.add('hidden');
+    if (errorTextEl) errorTextEl.textContent = '';
+
+    if (confirmBtn) confirmBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+    if (closeBtn) closeBtn.disabled = false;
+    if (btnSpinner) btnSpinner.classList.add('hidden');
+    if (btnText) btnText.textContent = 'Confirm Delete';
+
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+    cancelBtn?.focus();
+};
+
+const closeDeleteUserModal = (force = false) => {
+    if (userDeletionInProgress && !force) return;
+    const modal = document.getElementById('delete-user-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    selectedUserForDeletion = null;
+    userDeletionInProgress = false;
+
+    if (lastActiveDeleteTrigger && typeof lastActiveDeleteTrigger.focus === 'function') {
+        try { lastActiveDeleteTrigger.focus(); } catch (_) {}
+    }
+    lastActiveDeleteTrigger = null;
+};
+
+const handleDeleteUserModalBackdropClick = (event) => {
+    if (userDeletionInProgress) return;
+    if (event.target === document.getElementById('delete-user-modal')) {
+        closeDeleteUserModal();
+    }
+};
+
+const confirmDeleteUserAccount = async () => {
+    if (userDeletionInProgress || !selectedUserForDeletion) return;
+    userDeletionInProgress = true;
+
+    const confirmBtn = document.getElementById('delete-user-confirm-btn');
+    const cancelBtn = document.getElementById('delete-user-cancel-btn');
+    const closeBtn = document.getElementById('delete-user-close-btn');
+    const btnSpinner = document.getElementById('delete-user-btn-spinner');
+    const btnText = document.getElementById('delete-user-btn-text');
+    const errorEl = document.getElementById('delete-user-modal-error');
+    const errorTextEl = document.getElementById('delete-user-modal-error-text');
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
+    if (closeBtn) closeBtn.disabled = true;
+    if (btnSpinner) btnSpinner.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Deleting...';
+    if (errorEl) errorEl.classList.add('hidden');
+
+    const userId = selectedUserForDeletion.id;
+
+    try {
+        const res = await EchoTraceAPI.delete(`admin/users/delete&id=${userId}`);
+        if (res.success) {
+            closeDeleteUserModal(true);
+            showNotification(res.message || 'User account deleted successfully.', 'success');
+            loadAdminData();
+        } else {
+            throw new Error(res.error || 'Failed to delete user account.');
+        }
+    } catch (err) {
+        userDeletionInProgress = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+        if (closeBtn) closeBtn.disabled = false;
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Confirm Delete';
+
+        if (errorEl && errorTextEl) {
+            errorTextEl.textContent = err.message || 'Failed to delete user account. Please try again.';
+            errorEl.classList.remove('hidden');
+        } else {
+            alert(err.message || 'Failed to delete user account.');
+        }
+    }
+};
+
+const deleteUserAccount = (id) => {
+    openDeleteUserModal(id);
+};
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('delete-user-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            closeDeleteUserModal();
+        }
+    }
+});
+
 const populateAdminFeedback = (reports) => {
     const tbody = document.getElementById('admin-feedback-table-body');
+    const countEl = document.getElementById('admin-feedback-count');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
     if (!reports || reports.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500">No contact messages received yet.</td></tr>`;
+        if (countEl) countEl.textContent = '0 reports';
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-gray-500">No community review reports submitted yet.</td></tr>`;
         return;
     }
 
+    if (countEl) countEl.textContent = `${reports.length} report${reports.length !== 1 ? 's' : ''}`;
+
     reports.forEach(r => {
-        const safeName = escapeHtml(r.name || 'Anonymous');
-        const safeEmail = escapeHtml(r.email || '');
-        const safeSubject = escapeHtml(r.subject || '(No subject)');
-        const safeMessage = escapeHtml(r.message || '');
-        const safeStatus = escapeHtml(r.status || 'New');
+        const safeReporter = escapeHtml(r.reporter_username || 'Anonymous');
+        const safeProduct = escapeHtml(r.product_title || 'Unknown Product');
+        const safeAuthor = escapeHtml(r.review_author || 'Unknown Author');
+        const safeComment = escapeHtml(r.comments || '(No comment)');
+        const safeLabel = escapeHtml(r.reported_label || 'Suspicious');
         const tr = document.createElement('tr');
         tr.className = "hover:bg-glassBorder/10 transition-colors";
 
-        const statusBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">${safeStatus}</span>`;
+        const labelBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${r.reported_label === 'fake' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}">${safeLabel}</span>`;
         const date = new Date(r.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
         tr.innerHTML = `
-            <td class="p-4 font-semibold text-white">${safeName}</td>
-            <td class="p-4 text-cyan-400">${safeEmail}</td>
-            <td class="p-4 text-gray-300 font-medium">${safeSubject}</td>
-            <td class="p-4 text-gray-400 max-w-xs truncate italic" title="${safeMessage}">"${safeMessage}"</td>
-            <td class="p-4">${statusBadge}</td>
+            <td class="p-4 font-semibold text-white">${safeReporter}</td>
+            <td class="p-4 text-sky-400">${safeProduct}</td>
+            <td class="p-4 text-gray-300">${safeAuthor}</td>
+            <td class="p-4 text-gray-400 max-w-xs truncate" title="${safeComment}">"${safeComment}"</td>
+            <td class="p-4">${labelBadge}</td>
             <td class="p-4 text-gray-500 text-xs">${date}</td>
         `;
         tbody.appendChild(tr);
@@ -4414,7 +5365,7 @@ const triggerRetraining = async () => {
                 set('r-vocab', m.vocab_size?.toLocaleString() ?? '—');
 
                 // Core metrics
-                set('r-accuracy', fmt(m.test_accuracy ?? m.accuracy));
+                set('r-accuracy', formatModelAccuracy(m.test_accuracy ?? m.accuracy, m.test_samples ?? m.total_samples));
                 set('r-f1', fmt(m.f1_score));
                 set('r-roc', m.roc_auc ?? '—');
                 set('r-cv', fmt(m.cv_mean_f1));
@@ -5173,3 +6124,365 @@ window.addEventListener('load', measurePerformance);
 
 // Quick debug info
 console.log('[EchoTrace] Frontend version loaded: 20261022-13');
+
+// =========================================================================
+// PASTE REVIEWS SCANNER WORKFLOW (MOBILE + WEB)
+// =========================================================================
+
+let pasteReviewsParsed = [];
+let pasteReviewsDebounceTimer = null;
+let isPasteReviewsAnalyzing = false;
+let pasteReviewsScanResult = null;
+let pasteReviewsProgressInterval = null;
+
+const openPasteReviewsModal = () => {
+    const modal = document.getElementById('paste-reviews-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        dismissPasteReviewsError();
+        // Check if clipboard read is supported and update button
+        const clipBtn = document.getElementById('paste-btn-clipboard');
+        if (clipBtn) {
+            clipBtn.style.display = (navigator?.clipboard?.readText) ? 'flex' : 'none';
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+};
+
+const closePasteReviewsModal = () => {
+    const modal = document.getElementById('paste-reviews-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+};
+
+const dismissPasteReviewsError = () => {
+    const errEl = document.getElementById('paste-reviews-error');
+    if (errEl) errEl.classList.add('hidden');
+};
+
+const showPasteReviewsError = (msg) => {
+    const errEl = document.getElementById('paste-reviews-error');
+    const textEl = document.getElementById('paste-reviews-error-text');
+    if (errEl && textEl) {
+        textEl.textContent = msg || 'An error occurred during review analysis.';
+        errEl.classList.remove('hidden');
+        errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+};
+
+const clearPasteReviewsInput = () => {
+    const textarea = document.getElementById('paste-reviews-textarea');
+    if (textarea) textarea.value = '';
+    pasteReviewsParsed = [];
+    updatePasteReviewsStats({ totalDetected: 0, validReviews: [], duplicateCount: 0, invalidCount: 0 });
+    renderPasteReviewsPreview([]);
+    dismissPasteReviewsError();
+    const resultPanel = document.getElementById('paste-scan-result');
+    if (resultPanel) resultPanel.classList.add('hidden');
+    pasteReviewsScanResult = null;
+};
+
+const handlePasteFromClipboard = async () => {
+    try {
+        if (!navigator?.clipboard?.readText) {
+            showPasteReviewsError('Clipboard access is not supported by your browser. Please paste manually (Ctrl+V or long-press).');
+            return;
+        }
+        const text = await navigator.clipboard.readText();
+        if (!text || !text.trim()) {
+            showPasteReviewsError('Clipboard is empty or does not contain text.');
+            return;
+        }
+        const textarea = document.getElementById('paste-reviews-textarea');
+        if (textarea) {
+            textarea.value = text;
+            handlePasteReviewsInput();
+        }
+    } catch (err) {
+        showPasteReviewsError('Could not read from clipboard: ' + (err.message || 'Permission denied') + '. Please paste manually.');
+    }
+};
+
+const handlePasteReviewsInput = () => {
+    clearTimeout(pasteReviewsDebounceTimer);
+    pasteReviewsDebounceTimer = setTimeout(() => {
+        const textarea = document.getElementById('paste-reviews-textarea');
+        const text = textarea ? textarea.value : '';
+        const charCount = text.length;
+        const charStat = document.getElementById('paste-stat-chars');
+        if (charStat) charStat.textContent = charCount.toLocaleString();
+
+        if (typeof window.EchoTraceReviewParser !== 'object' || !window.EchoTraceReviewParser.parse) {
+            console.error('[EchoTrace] EchoTraceReviewParser is not loaded.');
+            return;
+        }
+
+        const parsed = window.EchoTraceReviewParser.parse(text);
+        pasteReviewsParsed = parsed.validReviews;
+        updatePasteReviewsStats(parsed);
+        renderPasteReviewsPreview(parsed.validReviews);
+    }, 200);
+};
+
+const updatePasteReviewsStats = (stats) => {
+    const totalEl = document.getElementById('paste-stat-total');
+    const validEl = document.getElementById('paste-stat-valid');
+    const dupEl = document.getElementById('paste-stat-duplicates');
+    const invEl = document.getElementById('paste-stat-invalid');
+    const previewCountEl = document.getElementById('paste-preview-count');
+    const analyzeBtn = document.getElementById('paste-btn-analyze');
+
+    if (totalEl) totalEl.textContent = stats.totalDetected || 0;
+    if (validEl) validEl.textContent = stats.validReviews ? stats.validReviews.length : 0;
+    if (dupEl) dupEl.textContent = stats.duplicateCount || 0;
+    if (invEl) invEl.textContent = stats.invalidCount || 0;
+    if (previewCountEl) previewCountEl.textContent = stats.validReviews ? stats.validReviews.length : 0;
+
+    const validCount = stats.validReviews ? stats.validReviews.length : 0;
+    if (analyzeBtn) {
+        analyzeBtn.disabled = validCount === 0 || validCount > 100 || isPasteReviewsAnalyzing;
+    }
+};
+
+const renderPasteReviewsPreview = (reviews) => {
+    const section = document.getElementById('paste-preview-section');
+    const list = document.getElementById('paste-preview-list');
+    if (!section || !list) return;
+
+    if (!reviews || !reviews.length) {
+        section.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+    }
+
+    section.classList.remove('hidden');
+    list.innerHTML = reviews.map((r, idx) => `
+        <div class="glass-panel p-3 rounded-xl border border-glassBorder flex items-start justify-between gap-3 text-xs group hover:border-cyan-500/30 transition-colors">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/10 text-cyan-300">
+                        Review ${r.index || (idx + 1)}
+                    </span>
+                    <span class="text-[10px] text-gray-500">${(r.text || '').length} chars</span>
+                </div>
+                <p class="text-gray-300 leading-relaxed break-words whitespace-pre-wrap">${escapeHtml(r.text || '')}</p>
+            </div>
+            <button type="button" onclick="removePastedReview(${idx})"
+                    class="text-gray-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors shrink-0"
+                    title="Remove this review">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    `).join('');
+
+    if (window.lucide) lucide.createIcons();
+};
+
+const removePastedReview = (index) => {
+    if (index >= 0 && index < pasteReviewsParsed.length) {
+        pasteReviewsParsed.splice(index, 1);
+        // Re-index remaining
+        pasteReviewsParsed.forEach((r, idx) => { r.index = idx + 1; });
+        updatePasteReviewsStats({
+            totalDetected: pasteReviewsParsed.length,
+            validReviews: pasteReviewsParsed,
+            duplicateCount: 0,
+            invalidCount: 0
+        });
+        renderPasteReviewsPreview(pasteReviewsParsed);
+    }
+};
+
+const submitPasteReviewsAnalysis = async () => {
+    if (isPasteReviewsAnalyzing) return;
+
+    if (!pasteReviewsParsed || !pasteReviewsParsed.length) {
+        showPasteReviewsError('Please paste at least one valid customer review before analyzing.');
+        return;
+    }
+
+    if (pasteReviewsParsed.length > 100) {
+        showPasteReviewsError('A maximum of 100 reviews can be analyzed per scan. Please remove some reviews.');
+        return;
+    }
+
+    const productName = (document.getElementById('paste-product-name')?.value || '').trim();
+    const marketplace = document.getElementById('paste-marketplace')?.value || 'Other';
+    const productUrl = (document.getElementById('paste-product-url')?.value || '').trim();
+
+    isPasteReviewsAnalyzing = true;
+    dismissPasteReviewsError();
+
+    // UI state
+    const analyzeBtn = document.getElementById('paste-btn-analyze');
+    const analyzeBtnText = document.getElementById('paste-btn-analyze-text');
+    const progressSection = document.getElementById('paste-progress-section');
+    const resultPanel = document.getElementById('paste-scan-result');
+    const elapsedEl = document.getElementById('paste-progress-elapsed');
+
+    if (analyzeBtn) analyzeBtn.disabled = true;
+    if (analyzeBtnText) analyzeBtnText.textContent = 'Analyzing...';
+    if (resultPanel) resultPanel.classList.add('hidden');
+    if (progressSection) progressSection.classList.remove('hidden');
+
+    const startTime = Date.now();
+    pasteReviewsProgressInterval = setInterval(() => {
+        if (elapsedEl) {
+            const sec = Math.round((Date.now() - startTime) / 1000);
+            elapsedEl.textContent = `${sec}s elapsed`;
+        }
+    }, 1000);
+
+    const reviewsPayload = pasteReviewsParsed.map((r, i) => ({
+        id: `paste-${i + 1}`,
+        text: r.text,
+        author: `Pasted Review #${i + 1}`,
+        rating: 0
+    }));
+
+    const payload = {
+        url: '',
+        reviews: reviewsPayload,
+        metadata: {
+            title: productName || `${marketplace} Pasted Reviews (${reviewsPayload.length} reviews)`,
+            external_id: `paste-${marketplace.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+            marketplace: marketplace,
+            product_url: productUrl,
+            review_count: reviewsPayload.length
+        },
+        source: 'manual_paste',
+        options: {
+            detect_duplicates: true,
+            show_explanations: true,
+            detect_language: true,
+            include_uncertain: true
+        }
+    };
+
+    try {
+        const result = await EchoTraceAPI.post('scan/manual-reviews', payload);
+        if (!result || !result.success) {
+            throw new Error(result?.error || 'AI analysis could not be completed.');
+        }
+
+        pasteReviewsScanResult = result;
+        renderPasteReviewsResult(result);
+        if (typeof refreshAuditHistoryIfVisible === 'function') {
+            refreshAuditHistoryIfVisible();
+        }
+        if (typeof showNotification === 'function') {
+            showNotification('Pasted reviews analyzed successfully!', 'success');
+        } else if (typeof alert === 'function') {
+            alert('Pasted reviews analyzed successfully!', 'success');
+        }
+    } catch (err) {
+        console.error('[EchoTrace] Paste reviews scan error:', err);
+        showPasteReviewsError(err.message || 'AI analysis failed. Please verify the AI service is running.');
+    } finally {
+        isPasteReviewsAnalyzing = false;
+        clearInterval(pasteReviewsProgressInterval);
+        pasteReviewsProgressInterval = null;
+        if (progressSection) progressSection.classList.add('hidden');
+        if (analyzeBtn) {
+            analyzeBtn.disabled = !pasteReviewsParsed.length || pasteReviewsParsed.length > 100;
+        }
+        if (analyzeBtnText) analyzeBtnText.textContent = 'Analyze Reviews with AI';
+        if (window.lucide) lucide.createIcons();
+    }
+};
+
+const renderPasteReviewsResult = (result) => {
+    const panel = document.getElementById('paste-scan-result');
+    if (!panel) return;
+
+    // Trust score display
+    const trustScoreEl = document.getElementById('paste-result-trust-score');
+    const genuineEl = document.getElementById('paste-result-genuine-count');
+    const suspEl = document.getElementById('paste-result-suspicious-count');
+    const uncertEl = document.getElementById('paste-result-uncertain-count');
+
+    const trustScore = result.trust_score ?? result.report?.trust_score;
+    const genuine = result.genuine_reviews ?? result.report?.genuine_reviews ?? 0;
+    const suspicious = result.fake_reviews ?? result.suspicious_reviews ?? result.report?.fake_reviews ?? 0;
+    const uncertain = result.uncertain_reviews ?? result.report?.uncertain_reviews ?? 0;
+
+    if (trustScoreEl) {
+        if (trustScore !== null && trustScore !== undefined) {
+            const scoreNum = Math.round(Number(trustScore));
+            trustScoreEl.textContent = `${scoreNum}%`;
+            trustScoreEl.className = scoreNum >= 70
+                ? 'text-2xl font-extrabold text-emerald-400'
+                : scoreNum >= 40
+                ? 'text-2xl font-extrabold text-amber-400'
+                : 'text-2xl font-extrabold text-rose-400';
+        } else {
+            trustScoreEl.textContent = 'N/A';
+            trustScoreEl.className = 'text-2xl font-extrabold text-gray-400';
+        }
+    }
+
+    if (genuineEl) genuineEl.textContent = genuine;
+    if (suspEl) suspEl.textContent = suspicious;
+    if (uncertEl) uncertEl.textContent = uncertain;
+
+    // Reviews list
+    const listEl = document.getElementById('paste-result-reviews-list');
+    const reviews = result.results || result.reviews || result.classified_reviews || [];
+    if (listEl && reviews.length) {
+        listEl.innerHTML = reviews.map((r, i) => {
+            const rawLabel = r.classification || r.label || (r.is_fake ? 'SUSPICIOUS' : 'GENUINE');
+            const label = String(rawLabel).replace(/\s*review$/i, '').toUpperCase();
+            const badgeClass = label === 'GENUINE'
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                : label === 'SUSPICIOUS' || label === 'FAKE'
+                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/30';
+            const rawConf = r.confidence_score ?? r.confidence;
+            const conf = rawConf !== undefined && rawConf !== null ? `${Math.round(Number(rawConf) <= 1 ? rawConf * 100 : rawConf)}%` : '';
+            const reasons = Array.isArray(r.fake_reasons) ? r.fake_reasons.join(', ') : (r.explanation || '');
+            return `
+                <div class="glass-panel p-3 rounded-xl border border-glassBorder text-xs space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <span class="font-semibold text-gray-300">Review #${i + 1}</span>
+                        <div class="flex items-center gap-2">
+                            ${conf ? `<span class="text-[10px] text-gray-500 font-mono">${conf}</span>` : ''}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeClass}">${label}</span>
+                        </div>
+                    </div>
+                    <p class="text-gray-300 whitespace-pre-wrap">${escapeHtml(r.review_text || r.text || '')}</p>
+                    ${reasons ? `<p class="text-[11px] text-gray-500 italic mt-1 border-t border-glassBorder/50 pt-1">${escapeHtml(reasons)}</p>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    panel.classList.remove('hidden');
+    panel.scrollIntoView({ behavior: 'smooth' });
+    if (window.lucide) lucide.createIcons();
+};
+
+const openPasteReviewsFullReport = () => {
+    if (pasteReviewsScanResult?.scan_id) {
+        closePasteReviewsModal();
+        if (typeof openDashboardFullReport === 'function') {
+            openDashboardFullReport(pasteReviewsScanResult.scan_id);
+        } else {
+            console.error('[EchoTrace] openDashboardFullReport is not available.');
+        }
+    } else {
+        showPasteReviewsError('Full report is not yet available. Analyze reviews first.');
+    }
+};
+
+// Global bindings for inline event attributes
+window.openPasteReviewsModal = openPasteReviewsModal;
+window.closePasteReviewsModal = closePasteReviewsModal;
+window.handlePasteReviewsInput = handlePasteReviewsInput;
+window.handlePasteFromClipboard = handlePasteFromClipboard;
+window.clearPasteReviewsInput = clearPasteReviewsInput;
+window.removePastedReview = removePastedReview;
+window.submitPasteReviewsAnalysis = submitPasteReviewsAnalysis;
+window.dismissPasteReviewsError = dismissPasteReviewsError;
+window.openPasteReviewsFullReport = openPasteReviewsFullReport;
+

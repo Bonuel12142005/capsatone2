@@ -243,6 +243,38 @@
                 </button>
             </div>
 
+            <!-- OTP Verification Pane (Security Verification) -->
+            <div id="status-otp" class="pane hidden">
+                <div class="auth-welcome">
+                    <div class="auth-icon">🛡️</div>
+                    <div class="intro-title">Verification Required</div>
+                    <div class="intro-text" id="otp-instruction-text">
+                        A 6-digit verification code has been sent to your email. Enter it below to authorize this session.
+                    </div>
+                    <div id="otp-email-target" style="font-family: monospace; font-size: 11px; color: #38bdf8; margin-top: 4px; font-weight: bold;"></div>
+                </div>
+                <div id="otp-error" class="error-msg hidden" role="alert"></div>
+                <div id="otp-success" class="status-banner success hidden" style="margin-bottom: 12px;"></div>
+                <form id="otp-form">
+                    <div class="input-group">
+                        <label for="otp-input" style="text-align: center;">Enter 6-Digit Code</label>
+                        <input type="text" id="otp-input" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" 
+                               style="text-align: center; letter-spacing: 8px; font-size: 20px; font-family: monospace; font-weight: bold;" 
+                               placeholder="••••••" autocomplete="one-time-code">
+                    </div>
+                    <button type="submit" id="otp-submit-btn" class="btn primary-btn" style="width: 100%;">Verify & Sign In</button>
+                </form>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 11px;">
+                    <button type="button" id="otp-resend-btn" style="background: none; border: none; color: #38bdf8; cursor: pointer; padding: 0; font-size: 11px;">
+                        Resend Code
+                    </button>
+                    <button type="button" id="otp-cancel-btn" style="background: none; border: none; color: #9ca3af; cursor: pointer; padding: 0; font-size: 11px;">
+                        ← Back to Sign In
+                    </button>
+                </div>
+            </div>
+
             <!-- Redesigned Settings Box (Hidden by default) -->
             <div id="status-settings" class="pane hidden">
                 <div class="settings-container">

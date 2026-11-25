@@ -566,6 +566,55 @@ html {
   overflow-x: hidden;
 }
 
+/* ==========================================================================
+   ADMIN PANEL SCROLLABLE TABLES & STICKY HEADERS
+   Requirements:
+   - Max visible table height: ~450px
+   - Independent vertical scrolling inside the container
+   - Responsive horizontal scrolling without page-wide overflow
+   - Sticky table headers with dark navy glassmorphic backdrop
+   - Custom styled scrollbar matching EchoTrace cyber-navy aesthetic
+   ========================================================================== */
+
+.admin-table-container {
+  max-height: 450px;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(6, 182, 212, 0.4) rgba(15, 23, 42, 0.5);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.admin-table-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.admin-table-container::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 4px;
+}
+
+.admin-table-container::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.35);
+  border-radius: 4px;
+}
+
+.admin-table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.65);
+}
+
+.admin-sticky-thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #0d1527;
+  color: #94a3b8;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 /* Scanned Products scrollable table */
 #admin-tab-products [style*="overflow-y"] {
   scrollbar-width: thin;
@@ -761,13 +810,19 @@ html {
   min-width: 0;
 }
 
-/* 10. Thumbnail grid: responsive auto-fill columns */
+/* 10. Thumbnail grid: responsive auto-fill columns inside upload container */
 #screenshot-thumbnails-grid {
   display: grid;
-  gap: 0.625rem;
-  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   width: 100%;
   min-width: 0;
+}
+
+#screenshot-dropzone.has-files {
+  border-color: rgba(34, 211, 238, 0.4);
+  background-color: rgba(3, 7, 18, 0.75);
+  cursor: default;
 }
 
 /* ── 11. ACTION TOOLBAR ─────────────────────────────────────────────────── */
@@ -1042,3 +1097,218 @@ html {
   background: rgba(34, 211, 238, 0.25);
   border-radius: 2px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ADMIN DELETE USER CONFIRMATION MODAL
+   Solid dark navy theme, high z-index, fully opaque, responsive & accessible
+   ═══════════════════════════════════════════════════════════════════════════ */
+#delete-user-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.75) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 1rem !important;
+  box-sizing: border-box !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#delete-user-modal.flex {
+  display: flex !important;
+}
+
+#delete-user-modal-card {
+  position: relative !important;
+  width: 100% !important;
+  max-width: 28rem !important;
+  background-color: #111827 !important; /* Solid dark navy */
+  color: #F9FAFB !important;
+  border: 1px solid rgba(34, 211, 238, 0.25) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 40px rgba(0, 212, 255, 0.12) !important;
+  padding: 1.5rem !important;
+  box-sizing: border-box !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  max-height: calc(100vh - 2rem) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+#delete-user-modal-card * {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.delete-user-info-box {
+  background-color: #1f2937 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px;
+  padding: 0.875rem 1rem;
+}
+
+.delete-user-warning-box {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+  color: #fde68a !important;
+  border-radius: 12px;
+  padding: 0.75rem 0.875rem;
+}
+
+.delete-user-error-box {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  color: #fca5a5 !important;
+  border-radius: 12px;
+  padding: 0.625rem 0.875rem;
+}
+
+#delete-user-cancel-btn {
+  background-color: #1f2937 !important;
+  color: #e5e7eb !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 10px !important;
+  padding: 0.625rem 1.125rem !important;
+  font-weight: 600 !important;
+  font-size: 0.8125rem !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#delete-user-cancel-btn:hover:not(:disabled) {
+  background-color: #374151 !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+#delete-user-confirm-btn {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  border-radius: 10px !important;
+  padding: 0.625rem 1.25rem !important;
+  font-weight: 700 !important;
+  font-size: 0.8125rem !important;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4) !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#delete-user-confirm-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+#delete-user-confirm-btn:disabled,
+#delete-user-cancel-btn:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+/* ==========================================================================
+   OTP / EMAIL VERIFICATION INPUT STYLING (FIX FOR INVISIBLE DIGITS)
+   ========================================================================== */
+#verify-otp-input {
+  color: #00d4ff !important;
+  -webkit-text-fill-color: #00d4ff !important;
+  caret-color: #00d4ff !important;
+  background-color: #030712 !important;
+  border: 1.5px solid rgba(0, 212, 255, 0.45) !important;
+  font-family: 'Rajdhani', monospace, 'Courier New', ui-monospace !important;
+  font-size: 1.75rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.55em !important;
+  text-align: center !important;
+  text-indent: 0.55em !important; /* visually center the spaced letters */
+  border-radius: 0.875rem !important;
+  padding: 0.75rem 1rem !important;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.7), 0 0 15px rgba(0, 212, 255, 0.1) !important;
+  outline: none !important;
+  transition: all 0.2s ease !important;
+}
+
+#verify-otp-input:focus {
+  border-color: #00d4ff !important;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 212, 255, 0.3) !important;
+}
+
+#verify-otp-input::placeholder {
+  color: rgba(148, 163, 184, 0.45) !important;
+  -webkit-text-fill-color: rgba(148, 163, 184, 0.45) !important;
+  letter-spacing: 0.45em !important;
+  font-size: 1.5rem !important;
+}
+
+/* Chrome Extension OTP input if present */
+#otp-input {
+  color: #00d4ff !important;
+  -webkit-text-fill-color: #00d4ff !important;
+  caret-color: #00d4ff !important;
+  background-color: #030712 !important;
+  border: 1.5px solid rgba(0, 212, 255, 0.45) !important;
+  font-family: monospace, ui-monospace !important;
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.4em !important;
+  text-align: center !important;
+  text-indent: 0.4em !important;
+}
+
+/* ==========================================================================
+   PASTE REVIEWS SCANNER MODAL - DESIGN SYSTEM ALIGNMENT
+   ========================================================================== */
+#paste-reviews-modal input,
+#paste-reviews-modal select,
+#paste-reviews-modal textarea {
+  background-color: #030b18 !important;
+  color: #e8f4f8 !important;
+  -webkit-text-fill-color: #e8f4f8 !important;
+  border: 1px solid rgba(0, 212, 255, 0.22) !important;
+  border-radius: 0.75rem !important;
+  transition: all 0.2s ease !important;
+}
+
+#paste-reviews-modal input:focus,
+#paste-reviews-modal select:focus,
+#paste-reviews-modal textarea:focus {
+  border-color: #00d4ff !important;
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15) !important;
+  outline: none !important;
+}
+
+#paste-reviews-modal select option {
+  background-color: #04142b !important;
+  color: #e8f4f8 !important;
+  padding: 8px 12px;
+}
+
+#paste-reviews-modal input::placeholder,
+#paste-reviews-modal textarea::placeholder {
+  color: rgba(148, 163, 184, 0.55) !important;
+  -webkit-text-fill-color: rgba(148, 163, 184, 0.55) !important;
+}
+
+/* Live review stats badges */
+.paste-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  background: rgba(2, 15, 35, 0.7);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  font-size: 0.75rem;
+}
+

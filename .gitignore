@@ -67,3 +67,17 @@ vendor/
 
 # System files
 *.pid
+
+# Real-world private review data & labeling artifacts
+python_ai/real_world/batches/
+python_ai/real_world/packets/
+assignments_manifest.json
+*.private.csv
+*consent_trace*.csv
+*consent_registry*.csv
+
+# Runtime cache, scratch, and experimental candidate models
+cache/
+scratch/
+python_ai/models/candidates/
+

@@ -143,4 +143,19 @@ class User
         $stmt->bindParam(':id', $id);
         return $stmt->execute();
     }
+
+    public function delete(int $id): bool
+    {
+        return $this->deleteUser($id);
+    }
+
+    public function updateStatus(int $id, string $status): bool
+    {
+        return $this->toggleStatus($id, $status);
+    }
+
+    public function updateRole(int $id, string $role): bool
+    {
+        return $this->changeRole($id, $role);
+    }
 }

@@ -248,7 +248,6 @@ class AuthController
             }
 
             // Always create with standard 'user' role — never grant admin privileges
-            // Google authenticated accounts have verified emails by definition
             $newUserId = $this->userModel->create(
                 $candidateUsername,
                 $googleEmail,
@@ -275,41 +274,145 @@ class AuthController
             $user = $this->userModel->findById($newUserId);
         }
 
-        $this->logLogin($user['id'], 'success');
+        // REQUIRE EMAIL OTP VERIFICATION:
+        // Successful Google identity verification alone MUST NOT grant immediate session/JWT.
+        // Send a 6-digit OTP code to the Google user's verified email.
+        require_once __DIR__ . '/../services/OtpService.php';
+        require_once __DIR__ . '/../services/MailService.php';
 
-        // Issue EchoTrace JWT
-        try {
-            $token = JWT::generate([
-                "id" => $user['id'],
-                "username" => $user['username'],
-                "role" => $user['role']
-            ]);
-        } catch (RuntimeException $e) {
-            error_log('EchoTrace authentication configuration error: ' . $e->getMessage());
-            return ["success" => false, "error" => "Authentication service is not configured.", "status" => 503];
-        }
+        $otpSvc = new OtpService($this->db);
+        $otp = $otpSvc->createChallenge((int)$user['id'], 'login');
 
-        // Set secure HttpOnly session recovery cookie
-        $isSecure = (echotrace_env('ECHOTRACE_COOKIE_SECURE', '0') === '1');
-        $rememberMe = !empty($data['remember_me']) || !empty($data['rememberMe']);
-        $cookieExpires = $rememberMe ? time() + (3600 * 24 * 7) : 0;
-        setcookie('echotrace_token', $token, [
-            'expires' => $cookieExpires,
-            'path' => '/',
-            'secure' => $isSecure,
-            'httponly' => true,
-            'samesite' => 'Lax'
-        ]);
+        $this->sendVerificationEmail($user['email'], (string)$user['username'], $otp);
+
+        // Mask email for user privacy (e.g., u***@gmail.com)
+        $emailParts = explode('@', (string)$user['email']);
+        $maskedLocal = strlen($emailParts[0]) > 2 
+            ? substr($emailParts[0], 0, 1) . str_repeat('*', max(1, strlen($emailParts[0]) - 2)) . substr($emailParts[0], -1) 
+            : $emailParts[0] . '***';
+        $emailMasked = $maskedLocal . '@' . ($emailParts[1] ?? 'example.com');
 
         return [
             "success" => true,
-            "token" => $token,
-            "user" => [
-                "id" => $user['id'],
-                "username" => $user['username'],
-                "email" => $user['email'],
-                "role" => $user['role']
-            ]
+            "requires_verification" => true,
+            "purpose" => "login",
+            "email" => $user['email'],
+            "email_masked" => $emailMasked,
+            "message" => "Google sign-in recognized! A 6-digit verification code has been sent to your email to complete sign in."
+        ];
+    }
+
+    /**
+     * Server-side authorization-code exchange for Chrome Extension MV3 Google OAuth.
+     */
+    public function googleCodeExchange(array $data): array
+    {
+        $code = trim((string)($data['code'] ?? ''));
+        $redirectUri = trim((string)($data['redirect_uri'] ?? ''));
+        $codeVerifier = !empty($data['code_verifier']) ? trim((string)$data['code_verifier']) : null;
+
+        if (empty($code)) {
+            return ["success" => false, "error" => "Authorization code is required.", "status" => 400];
+        }
+
+        if (empty($redirectUri)) {
+            return ["success" => false, "error" => "OAuth redirect URI is required.", "status" => 400];
+        }
+
+        require_once __DIR__ . '/../services/GoogleAuthService.php';
+
+        $exchangeResult = GoogleAuthService::exchangeCodeForIdToken($code, $redirectUri, $codeVerifier);
+        if ($exchangeResult === false) {
+            $this->logLogin(null, 'failed');
+            return ["success" => false, "error" => "Failed to exchange authorization code with Google.", "status" => 401];
+        }
+
+        $claims = $exchangeResult['claims'];
+        $googleSub = trim((string)($claims['sub'] ?? ''));
+        $googleEmail = strtolower(trim((string)($claims['email'] ?? '')));
+
+        if (empty($googleSub) || empty($googleEmail)) {
+            return ["success" => false, "error" => "Google token is missing required identity claims.", "status" => 400];
+        }
+
+        // 1. Recognize returning Google user
+        $user = $this->userModel->findByGoogleId($googleSub);
+
+        if ($user) {
+            if ($user['status'] === 'blocked') {
+                $this->logLogin($user['id'], 'failed');
+                return ["success" => false, "error" => "Your account has been suspended. Contact support.", "status" => 403];
+            }
+        } else {
+            // 2. Prevent account takeover
+            $existingEmailUser = $this->userModel->findByEmail($googleEmail);
+            if ($existingEmailUser) {
+                return [
+                    "success" => false,
+                    "error" => "An account with this email already exists using password authentication. Sign in with your password.",
+                    "status" => 409
+                ];
+            }
+
+            // 3. Create user
+            $baseUsername = preg_replace('/[^a-zA-Z0-9_]/', '', explode('@', $googleEmail)[0]);
+            if (empty($baseUsername)) $baseUsername = 'google_user';
+            if (strlen($baseUsername) > 30) $baseUsername = substr($baseUsername, 0, 30);
+
+            $candidateUsername = $baseUsername;
+            $counter = 1;
+            while ($this->userModel->findByUsername($candidateUsername)) {
+                $candidateUsername = $baseUsername . '_' . $counter;
+                $counter++;
+            }
+
+            $newUserId = $this->userModel->create(
+                $candidateUsername,
+                $googleEmail,
+                null,
+                'user',
+                $googleSub,
+                true
+            );
+
+            if (!$newUserId) {
+                return ["success" => false, "error" => "Unable to create your account. Please try again.", "status" => 500];
+            }
+
+            try {
+                $msg = "Welcome to EchoTrace, $candidateUsername! Your account was securely created via Google.";
+                $notif_q = "INSERT INTO notifications (user_id, message) VALUES (:user_id, :message)";
+                $notif_stmt = $this->db->prepare($notif_q);
+                $notif_stmt->bindParam(':user_id', $newUserId);
+                $notif_stmt->bindParam(':message', $msg);
+                $notif_stmt->execute();
+            } catch (Exception $e) {}
+
+            $user = $this->userModel->findById($newUserId);
+        }
+
+        // Issue login OTP
+        require_once __DIR__ . '/../services/OtpService.php';
+        require_once __DIR__ . '/../services/MailService.php';
+
+        $otpSvc = new OtpService($this->db);
+        $otp = $otpSvc->createChallenge((int)$user['id'], 'login');
+
+        $this->sendVerificationEmail($user['email'], (string)$user['username'], $otp);
+
+        $emailParts = explode('@', (string)$user['email']);
+        $maskedLocal = strlen($emailParts[0]) > 2 
+            ? substr($emailParts[0], 0, 1) . str_repeat('*', max(1, strlen($emailParts[0]) - 2)) . substr($emailParts[0], -1) 
+            : $emailParts[0] . '***';
+        $emailMasked = $maskedLocal . '@' . ($emailParts[1] ?? 'example.com');
+
+        return [
+            "success" => true,
+            "requires_verification" => true,
+            "purpose" => "login",
+            "email" => $user['email'],
+            "email_masked" => $emailMasked,
+            "message" => "Google authorization verified! A 6-digit verification code has been sent to your email."
         ];
     }
 
@@ -559,20 +662,38 @@ class AuthController
             return ["success" => false, "error" => "Account not found.", "status" => 404];
         }
 
-        if (!empty($user['email_verified_at'])) {
-            return ["success" => true, "message" => "Email is already verified. You can log in.", "already_verified" => true];
-        }
-
         require_once __DIR__ . '/../services/OtpService.php';
         $otpSvc = new OtpService($this->db);
         $errorMessage = '';
 
-        if (!$otpSvc->verifyOtp((int)$user['id'], $otp, $errorMessage)) {
+        // Purpose resolution:
+        // If the user's email is unverified, check 'registration' purpose first.
+        // If the user's email is already verified (e.g. Google user or returning verified user), check 'login' purpose.
+        $purpose = empty($user['email_verified_at']) ? 'registration' : 'login';
+
+        // Attempt verification with the expected purpose
+        $verified = $otpSvc->verifyOtp((int)$user['id'], $otp, $purpose, $errorMessage);
+
+        // Fallback for edge cases: if unverified user also had a login challenge or vice-versa
+        if (!$verified && empty($user['email_verified_at'])) {
+            $fallbackErr = '';
+            if ($otpSvc->verifyOtp((int)$user['id'], $otp, 'login', $fallbackErr)) {
+                $verified = true;
+                $purpose = 'login';
+            }
+        }
+
+        if (!$verified) {
             return ["success" => false, "error" => $errorMessage ?: "Invalid or expired verification code.", "status" => 400];
         }
 
-        // Mark verified
-        $this->userModel->markEmailVerified((int)$user['id']);
+        // If registration purpose, mark email verified
+        if ($purpose === 'registration') {
+            $this->userModel->markEmailVerified((int)$user['id']);
+        }
+
+        // Log successful login
+        $this->logLogin($user['id'], 'success');
 
         // Issue JWT & session cookie immediately for seamless sign-in
         try {
@@ -582,7 +703,7 @@ class AuthController
                 "role" => $user['role']
             ]);
         } catch (RuntimeException $e) {
-            return ["success" => true, "message" => "Email verified successfully! You can now sign in."];
+            return ["success" => true, "message" => "Verified successfully! You can now sign in."];
         }
 
         $isSecure = (echotrace_env('ECHOTRACE_COOKIE_SECURE', '0') === '1');
@@ -596,7 +717,7 @@ class AuthController
 
         return [
             "success" => true,
-            "message" => "Email verified successfully! Logging you in...",
+            "message" => "Verification successful! Logging you in...",
             "token" => $token,
             "user" => [
                 "id" => $user['id'],
@@ -621,17 +742,14 @@ class AuthController
             return ["success" => true, "message" => "If the account exists, a new verification code has been sent."];
         }
 
-        if (!empty($user['email_verified_at'])) {
-            return ["success" => true, "message" => "Email is already verified. Please sign in.", "already_verified" => true];
-        }
-
         require_once __DIR__ . '/../services/OtpService.php';
         require_once __DIR__ . '/../services/MailService.php';
 
         $otpSvc = new OtpService($this->db);
+        $purpose = empty($user['email_verified_at']) ? 'registration' : 'login';
 
-        if (!$otpSvc->canResend((int)$user['id'])) {
-            $remaining = $otpSvc->resendCooldownRemaining((int)$user['id']);
+        if (!$otpSvc->canResend((int)$user['id'], $purpose)) {
+            $remaining = $otpSvc->resendCooldownRemaining((int)$user['id'], $purpose);
             return [
                 "success" => false,
                 "error" => "Please wait {$remaining} second(s) before requesting another code.",
@@ -640,7 +758,7 @@ class AuthController
             ];
         }
 
-        $otp = $otpSvc->createChallenge((int)$user['id']);
+        $otp = $otpSvc->createChallenge((int)$user['id'], $purpose);
         $this->sendVerificationEmail($email, (string)$user['username'], $otp);
 
         return [

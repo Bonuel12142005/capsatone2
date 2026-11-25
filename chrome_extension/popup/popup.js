@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('login-form')?.addEventListener('submit', handleLogin);
     document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
 
+    // OTP form actions
+    document.getElementById('otp-form')?.addEventListener('submit', handleOtpSubmit);
+    document.getElementById('otp-resend-btn')?.addEventListener('click', handleOtpResend);
+    document.getElementById('otp-cancel-btn')?.addEventListener('click', () => showPane('login'));
+
     // Header buttons
     document.getElementById('dashboard-btn')?.addEventListener('click', handleOpenDashboard);
     document.getElementById('settings-btn')?.addEventListener('click', openSettingsPane);
@@ -575,6 +580,187 @@ const handleLogout = () => {
     });
 };
 
+// ─── PKCE & CRYPTO HELPERS ────────────────────────────────────────────────
+const generateRandomString = (length = 43) => {
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let result = '';
+    const randomValues = new Uint8Array(length);
+    crypto.getRandomValues(randomValues);
+    for (let i = 0; i < length; i++) {
+        result += charset[randomValues[i] % charset.length];
+    }
+    return result;
+};
+
+const sha256 = async (plain) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return hash;
+};
+
+const base64UrlEncode = (buffer) => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+};
+
+// ─── PENDING AUTHENTICATION STATE ──────────────────────────────────────────
+let pendingAuthEmail = '';
+let otpCooldownInterval = null;
+
+const showOtpSection = (email, maskedEmail) => {
+    pendingAuthEmail = email;
+    const targetEl = document.getElementById('otp-email-target');
+    const input = document.getElementById('otp-input');
+    const errorEl = document.getElementById('otp-error');
+    const successEl = document.getElementById('otp-success');
+
+    if (targetEl) targetEl.textContent = maskedEmail ? `Sent to: ${maskedEmail}` : email;
+    if (errorEl) errorEl.classList.add('hidden');
+    if (successEl) successEl.classList.add('hidden');
+    if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 150);
+    }
+    showPane('otp');
+};
+
+const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    const otpInput = document.getElementById('otp-input');
+    const otp = otpInput ? otpInput.value.trim() : '';
+    const errorEl = document.getElementById('otp-error');
+    const submitBtn = document.getElementById('otp-submit-btn');
+
+    if (!pendingAuthEmail) {
+        if (errorEl) {
+            errorEl.textContent = 'Session lost. Please sign in again.';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (!otp || otp.length !== 6) {
+        if (errorEl) {
+            errorEl.textContent = 'Please enter the 6-digit code.';
+            errorEl.classList.remove('hidden');
+        }
+        return;
+    }
+
+    if (errorEl) errorEl.classList.add('hidden');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verifying…';
+    }
+
+    try {
+        const res = await fetch(`${DEFAULT_API_URL}?route=auth/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: pendingAuthEmail, otp: otp })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success && data.token) {
+            // Save session
+            chrome.storage.local.set({
+                auth_token: data.token,
+                username: data.user.username,
+                email: data.user.email || '',
+                user_id: data.user.id,
+                auth_provider: 'google'
+            }, () => {
+                loadUserState();
+            });
+        } else {
+            if (errorEl) {
+                errorEl.textContent = data.error || 'Verification failed. Please check your code.';
+                errorEl.classList.remove('hidden');
+            }
+        }
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = 'Could not reach server for verification.';
+            errorEl.classList.remove('hidden');
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Verify & Sign In';
+        }
+    }
+};
+
+const handleOtpResend = async () => {
+    const errorEl = document.getElementById('otp-error');
+    const successEl = document.getElementById('otp-success');
+    const resendBtn = document.getElementById('otp-resend-btn');
+
+    if (!pendingAuthEmail) return;
+
+    if (resendBtn) resendBtn.disabled = true;
+
+    try {
+        const res = await fetch(`${DEFAULT_API_URL}?route=auth/resend-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: pendingAuthEmail })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            if (successEl) {
+                successEl.textContent = data.message || 'A fresh code was sent to your email.';
+                successEl.classList.remove('hidden');
+            }
+            if (errorEl) errorEl.classList.add('hidden');
+            startOtpResendCountdown(60);
+        } else {
+            if (errorEl) {
+                errorEl.textContent = data.error || 'Unable to resend code.';
+                errorEl.classList.remove('hidden');
+            }
+            if (resendBtn) resendBtn.disabled = false;
+        }
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = 'Failed to connect to server.';
+            errorEl.classList.remove('hidden');
+        }
+        if (resendBtn) resendBtn.disabled = false;
+    }
+};
+
+const startOtpResendCountdown = (seconds) => {
+    const resendBtn = document.getElementById('otp-resend-btn');
+    if (!resendBtn) return;
+    if (otpCooldownInterval) clearInterval(otpCooldownInterval);
+
+    let left = seconds;
+    resendBtn.disabled = true;
+    resendBtn.textContent = `Resend in ${left}s`;
+
+    otpCooldownInterval = setInterval(() => {
+        left--;
+        if (left <= 0) {
+            clearInterval(otpCooldownInterval);
+            otpCooldownInterval = null;
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend Code';
+        } else {
+            resendBtn.textContent = `Resend in ${left}s`;
+        }
+    }, 1000);
+};
+
 // ─── GOOGLE AUTHENTICATION VIA CHROME.IDENTITY ──────────────────────────────
 const handleGoogleAuth = async () => {
     const errorEl = document.getElementById('login-error');
@@ -587,8 +773,8 @@ const handleGoogleAuth = async () => {
     if (btnText) btnText.textContent = "Connecting to Google…";
 
     try {
-        // Fetch server-configured client ID
-        const res = await fetch(`${DEFAULT_API_URL}?route=auth/google-client-id`);
+        // Fetch server-configured client ID for extension
+        const res = await fetch(`${DEFAULT_API_URL}?route=auth/google-client-id&client_type=extension`);
         const data = await res.json();
         const clientId = data?.client_id;
 
@@ -596,20 +782,26 @@ const handleGoogleAuth = async () => {
             throw new Error("Google Client ID is not configured on the backend.");
         }
 
-        // Build OAuth2 Authorization URL using launchWebAuthFlow
-        const redirectUri = chrome.identity.getRedirectURL();
-        const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const state = Math.random().toString(36).substring(2);
+        // Generate PKCE code_verifier and code_challenge
+        const codeVerifier = generateRandomString(64);
+        const codeChallengeHashed = await sha256(codeVerifier);
+        const codeChallenge = base64UrlEncode(codeChallengeHashed);
 
-        // Request openid, email, profile and get an id_token for server-side verification
+        const redirectUri = chrome.identity.getRedirectURL();
+        console.log('[EchoTrace Extension] Google OAuth Redirect URI:', redirectUri);
+        const state = generateRandomString(32);
+
+        // Build OAuth2 Authorization URL using response_type=code
         const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
         authUrl.searchParams.set("client_id", clientId);
-        authUrl.searchParams.set("response_type", "id_token");
+        authUrl.searchParams.set("response_type", "code");
         authUrl.searchParams.set("redirect_uri", redirectUri);
         authUrl.searchParams.set("scope", "openid email profile");
-        authUrl.searchParams.set("nonce", nonce);
         authUrl.searchParams.set("state", state);
+        authUrl.searchParams.set("code_challenge", codeChallenge);
+        authUrl.searchParams.set("code_challenge_method", "S256");
         authUrl.searchParams.set("prompt", "select_account");
+        authUrl.searchParams.set("access_type", "offline");
 
         chrome.identity.launchWebAuthFlow(
             {
@@ -618,11 +810,15 @@ const handleGoogleAuth = async () => {
             },
             async (redirectUrl) => {
                 if (chrome.runtime.lastError || !redirectUrl) {
-                    const errMsg = chrome.runtime.lastError?.message || "Google sign-in was cancelled.";
+                    const rawMsg = chrome.runtime.lastError?.message || "Google sign-in was cancelled.";
+                    let friendlyMsg = rawMsg;
+                    if (rawMsg.includes("User cancelled") || rawMsg.includes("canceled")) {
+                        friendlyMsg = "Google sign-in cancelled.";
+                    } else if (rawMsg.includes("redirect_uri_mismatch") || rawMsg.includes("bad client id") || rawMsg.includes("authorization page could not be loaded")) {
+                        friendlyMsg = `OAuth configuration issue: Ensure redirect URI ${redirectUri} is registered in Google Cloud Console.`;
+                    }
                     if (errorEl) {
-                        errorEl.textContent = errMsg.includes("User cancelled")
-                            ? "Google sign-in cancelled."
-                            : errMsg;
+                        errorEl.textContent = friendlyMsg;
                         errorEl.classList.remove('hidden');
                     }
                     if (googleBtn) googleBtn.disabled = false;
@@ -630,37 +826,54 @@ const handleGoogleAuth = async () => {
                     return;
                 }
 
-                // Extract id_token from redirect hash fragment
+                // Extract authorization code and state from redirect URL
                 try {
-                    const urlHash = new URL(redirectUrl).hash.substring(1);
-                    const params = new URLSearchParams(urlHash);
-                    const idToken = params.get("id_token");
+                    const parsedUrl = new URL(redirectUrl);
+                    const queryParams = parsedUrl.searchParams;
 
-                    if (!idToken) {
-                        throw new Error("No identity token returned by Google.");
+                    // Check for OAuth error response
+                    const oauthError = queryParams.get("error");
+                    const errorDesc = queryParams.get("error_description");
+                    if (oauthError) {
+                        let msg = `Google OAuth Error: ${oauthError}`;
+                        if (oauthError === 'redirect_uri_mismatch') {
+                            msg = `Redirect URI mismatch. Please add ${redirectUri} to Authorized Redirect URIs in Google Cloud Console.`;
+                        } else if (oauthError === 'access_denied') {
+                            msg = "Access was denied by the user or account.";
+                        } else if (errorDesc) {
+                            msg = `${oauthError}: ${decodeURIComponent(errorDesc)}`;
+                        }
+                        throw new Error(msg);
                     }
 
-                    // Authenticate with EchoTrace PHP backend using the Google credential
-                    const loginRes = await fetch(`${DEFAULT_API_URL}?route=auth/google-login`, {
+                    const returnedState = queryParams.get("state");
+                    if (returnedState !== state) {
+                        throw new Error("OAuth security state mismatch. Authentication aborted.");
+                    }
+
+                    const authCode = queryParams.get("code");
+                    if (!authCode) {
+                        throw new Error("No authorization code returned by Google.");
+                    }
+
+                    // Exchange authorization code server-side with PKCE verifier
+                    const exchangeRes = await fetch(`${DEFAULT_API_URL}?route=auth/google-code-exchange`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ credential: idToken })
+                        body: JSON.stringify({
+                            code: authCode,
+                            redirect_uri: redirectUri,
+                            code_verifier: codeVerifier
+                        })
                     });
 
-                    const loginData = await loginRes.json();
-                    if (loginRes.ok && loginData.success) {
-                        chrome.storage.local.set({
-                            auth_token: loginData.token,
-                            username: loginData.user.username,
-                            email: loginData.user.email || '',
-                            user_id: loginData.user.id,
-                            auth_provider: 'google'
-                        }, () => {
-                            loadUserState();
-                        });
+                    const exchangeData = await exchangeRes.json();
+                    if (exchangeRes.ok && exchangeData.success && exchangeData.requires_verification) {
+                        // Display OTP verification UI in extension popup!
+                        showOtpSection(exchangeData.email, exchangeData.email_masked);
                     } else {
                         if (errorEl) {
-                            errorEl.textContent = loginData.error || "Google authentication rejected.";
+                            errorEl.textContent = exchangeData.error || "Google authorization rejected.";
                             errorEl.classList.remove('hidden');
                         }
                     }

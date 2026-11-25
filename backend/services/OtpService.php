@@ -1,6 +1,6 @@
 <?php
 // backend/services/OtpService.php
-// Cryptographically secure OTP generation and verification for email verification.
+// Cryptographically secure OTP generation and verification for email verification & login OTP.
 
 class OtpService
 {
@@ -18,43 +18,54 @@ class OtpService
     // ─── Public API ──────────────────────────────────────────────────────────
 
     /**
-     * Create a new OTP challenge for the given user.
-     * Invalidates any prior active challenges for this user first.
+     * Create a new OTP challenge for the given user with a specific purpose ('registration' or 'login').
+     * Invalidates any prior active challenges for this user and purpose first.
      * Returns the plaintext OTP (send it by email; never store it).
      */
-    public function createChallenge(int $userId): string
+    public function createChallenge(int $userId, string $purpose = 'registration'): string
     {
-        // Invalidate old open challenges
-        $this->invalidateOldChallenges($userId);
+        if (!in_array($purpose, ['registration', 'login'], true)) {
+            $purpose = 'registration';
+        }
+
+        // Invalidate old open challenges for this user & purpose
+        $this->invalidateOldChallenges($userId, $purpose);
 
         $otp  = $this->generateOtp();
         $hash = $this->hashOtp($otp, (string)$userId);
 
         $stmt = $this->db->prepare(
             "INSERT INTO email_verification_challenges
-                 (user_id, otp_hash, expires_at, attempt_count, is_used, is_invalidated)
-             VALUES (:uid, :hash, DATE_ADD(NOW(), INTERVAL :expiry SECOND), 0, 0, 0)"
+                 (user_id, purpose, otp_hash, expires_at, attempt_count, is_used, is_invalidated)
+             VALUES (:uid, :purpose, :hash, DATE_ADD(NOW(), INTERVAL :expiry SECOND), 0, 0, 0)"
         );
-        $stmt->bindValue(':uid',    $userId,                      PDO::PARAM_INT);
-        $stmt->bindValue(':hash',   $hash,                        PDO::PARAM_STR);
-        $stmt->bindValue(':expiry', self::OTP_EXPIRY_SECONDS,     PDO::PARAM_INT);
+        $stmt->bindValue(':uid',     $userId,                      PDO::PARAM_INT);
+        $stmt->bindValue(':purpose', $purpose,                     PDO::PARAM_STR);
+        $stmt->bindValue(':hash',    $hash,                        PDO::PARAM_STR);
+        $stmt->bindValue(':expiry',  self::OTP_EXPIRY_SECONDS,     PDO::PARAM_INT);
         $stmt->execute();
 
         return $otp;
     }
 
     /**
-     * Verify a submitted OTP for a user.
+     * Verify a submitted OTP for a user and specific purpose.
      * Returns true and marks the challenge used on success.
      * Returns false on invalid/expired/too-many-attempts.
      * @param  string &$error  Set to a user-facing error message on failure
      */
-    public function verifyOtp(int $userId, string $submittedOtp, string &$error = ''): bool
+    public function verifyOtp(int $userId, string $submittedOtp, string $purpose = 'registration', string &$error = ''): bool
     {
-        // Fetch the most recent active challenge
+        if (!in_array($purpose, ['registration', 'login'], true)) {
+            $error = 'Invalid verification context.';
+            return false;
+        }
+
+        // Fetch the most recent active challenge for this user AND purpose
         $stmt = $this->db->prepare(
             "SELECT * FROM email_verification_challenges
              WHERE user_id = :uid
+               AND purpose = :purpose
                AND is_used = 0
                AND is_invalidated = 0
                AND expires_at > NOW()
@@ -62,11 +73,12 @@ class OtpService
              LIMIT 1"
         );
         $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':purpose', $purpose, PDO::PARAM_STR);
         $stmt->execute();
         $challenge = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$challenge) {
-            $error = 'Verification code has expired. Please request a new one.';
+            $error = 'Verification code has expired or is invalid. Please request a new one.';
             return false;
         }
 
@@ -107,17 +119,19 @@ class OtpService
      * Check whether the user can request a new OTP (resend cooldown).
      * Returns true if they can resend.
      */
-    public function canResend(int $userId): bool
+    public function canResend(int $userId, string $purpose = 'registration'): bool
     {
         $stmt = $this->db->prepare(
             "SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) AS elapsed
              FROM email_verification_challenges
              WHERE user_id = :uid
+               AND purpose = :purpose
                AND is_invalidated = 0
              ORDER BY created_at DESC
              LIMIT 1"
         );
         $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':purpose', $purpose, PDO::PARAM_STR);
         $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -129,17 +143,19 @@ class OtpService
     /**
      * Seconds until the user can resend (0 if they can resend now).
      */
-    public function resendCooldownRemaining(int $userId): int
+    public function resendCooldownRemaining(int $userId, string $purpose = 'registration'): int
     {
         $stmt = $this->db->prepare(
             "SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) AS elapsed
              FROM email_verification_challenges
              WHERE user_id = :uid
+               AND purpose = :purpose
                AND is_invalidated = 0
              ORDER BY created_at DESC
              LIMIT 1"
         );
         $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':purpose', $purpose, PDO::PARAM_STR);
         $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -151,16 +167,21 @@ class OtpService
     }
 
     /**
-     * Invalidate all open challenges for this user (called before issuing a new OTP).
+     * Invalidate all open challenges for this user and purpose.
      */
-    public function invalidateOldChallenges(int $userId): void
+    public function invalidateOldChallenges(int $userId, ?string $purpose = null): void
     {
-        $stmt = $this->db->prepare(
-            "UPDATE email_verification_challenges
-             SET is_invalidated = 1
-             WHERE user_id = :uid AND is_used = 0 AND is_invalidated = 0"
-        );
+        $sql = "UPDATE email_verification_challenges
+                SET is_invalidated = 1
+                WHERE user_id = :uid AND is_used = 0 AND is_invalidated = 0";
+        if ($purpose !== null) {
+            $sql .= " AND purpose = :purpose";
+        }
+        $stmt = $this->db->prepare($sql);
         $stmt->bindValue(':uid', $userId, PDO::PARAM_INT);
+        if ($purpose !== null) {
+            $stmt->bindValue(':purpose', $purpose, PDO::PARAM_STR);
+        }
         $stmt->execute();
     }
 
@@ -179,4 +200,3 @@ class OtpService
         return hash_hmac('sha256', $otp . ':' . $userId, $secret);
     }
 }
-

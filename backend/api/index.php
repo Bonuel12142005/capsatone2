@@ -232,6 +232,26 @@ try {
             echo json_encode($response);
             break;
 
+        case 'auth/google-code-exchange':
+            if ($request_method !== 'POST') {
+                http_response_code(405);
+                echo json_encode(["success" => false, "error" => "Method Not Allowed"]);
+                break;
+            }
+            if (!RateLimiter::allow('auth-google-code', (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 15, 60)) {
+                http_response_code(429);
+                echo json_encode(['success' => false, 'error' => 'Too many authorization exchange attempts. Please wait.']);
+                break;
+            }
+            $authController = new AuthController($db);
+            $response = $authController->googleCodeExchange($input_data);
+            if (!$response['success']) {
+                http_response_code(intval($response['status'] ?? 400));
+            }
+            unset($response['status']);
+            echo json_encode($response);
+            break;
+
         case 'auth/google-client-id':
             if ($request_method !== 'GET') {
                 http_response_code(405);
@@ -240,10 +260,16 @@ try {
             }
             require_once __DIR__ . '/../services/GoogleAuthService.php';
             $cid = GoogleAuthService::getClientId();
+            $extCid = trim((string)echotrace_env('GOOGLE_EXTENSION_CLIENT_ID', ''));
+            $clientType = trim((string)($_GET['client_type'] ?? ''));
+            // If the extension requests its specific client ID and one is configured, provide it
+            $effectiveCid = ($clientType === 'extension' && $extCid !== '') ? $extCid : $cid;
             echo json_encode([
                 "success" => true,
-                "client_id" => $cid,
-                "configured" => ($cid !== '')
+                "client_id" => $effectiveCid,
+                "web_client_id" => $cid,
+                "extension_client_id" => $extCid !== '' ? $extCid : $cid,
+                "configured" => ($effectiveCid !== '')
             ]);
             break;
 
@@ -794,10 +820,14 @@ try {
                 echo json_encode(["success" => false, "error" => "Method Not Allowed"]);
                 break;
             }
-            AuthMiddleware::demandAdmin();
-            $id = $_GET['id'] ?? null;
+            $currentAdmin = AuthMiddleware::demandAdmin();
+            $id = $_GET['id'] ?? $input_data['id'] ?? null;
             $adminController = new AdminController($db);
-            $response = $adminController->deleteUser($id);
+            $response = $adminController->deleteUser($id, $currentAdmin);
+            if (!$response['success']) {
+                http_response_code(intval($response['status'] ?? 400));
+            }
+            unset($response['status']);
             echo json_encode($response);
             break;
 
@@ -813,6 +843,45 @@ try {
             $adminController = new AdminController($db);
             $response = $adminController->getReports();
             echo json_encode($response);
+            break;
+
+        case 'admin/scan-analytics':
+            AuthMiddleware::demandAdmin();
+            $adminController = new AdminController($db);
+            $response = $adminController->getScanAnalytics($_GET);
+            echo json_encode($response);
+            break;
+
+        case 'admin/scan-reports':
+            AuthMiddleware::demandAdmin();
+            $adminController = new AdminController($db);
+            $response = $adminController->getScanReports($_GET);
+            echo json_encode($response);
+            break;
+
+        case 'admin/scan-detail':
+            AuthMiddleware::demandAdmin();
+            $scan_id = (int)($_GET['id'] ?? 0);
+            if ($scan_id < 1) {
+                http_response_code(400);
+                echo json_encode(["success" => false, "error" => "Valid scan ID is required."]);
+                break;
+            }
+            $adminController = new AdminController($db);
+            $response = $adminController->getScanDetail($scan_id);
+            echo json_encode($response);
+            break;
+
+        case 'admin/scan-reports-csv':
+            AuthMiddleware::demandAdmin();
+            $adminController = new AdminController($db);
+            $adminController->exportScanReportsCSV($_GET);
+            break;
+
+        case 'admin/scan-reports-pdf':
+            AuthMiddleware::demandAdmin();
+            $adminController = new AdminController($db);
+            $adminController->exportScanReportsPDF($_GET);
             break;
 
         case 'admin/products':
